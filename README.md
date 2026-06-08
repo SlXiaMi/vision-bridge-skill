@@ -1,8 +1,8 @@
-# multimodal-skill
+# vision-bridge-skill
 
 让不支持多模态的 AI 也能"看懂"视觉内容。
 
-[![Version](https://img.shields.io/badge/version-3.4.0-blue)](https://github.com/SlXiaMi/multimodal-skill)
+[![Version](https://img.shields.io/badge/version-3.4.0-blue)](https://github.com/SlXiaMi/vision-bridge-skill)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 ---
@@ -19,10 +19,10 @@
 
 ```bash
 # ❶ 安装
-git clone https://github.com/SlXiaMi/multimodal-skill.git ~/.claude/skills/multimodal-skill
+git clone https://github.com/SlXiaMi/vision-bridge-skill.git ~/.claude/skills/vision-bridge-skill
 
 # ❷ 配置
-cd ~/.claude/skills/multimodal-skill
+cd ~/.claude/skills/vision-bridge-skill
 cp multimodal-config.example.json multimodal-config.json
 # 编辑 multimodal-config.json，填入你的 API 地址、密钥和模型名
 
@@ -169,14 +169,14 @@ pip install Pillow      # 大文件压缩（可选，不装则跳过）
 
 | 工具 | 安装位置 | 调用方式 |
 |------|---------|---------|
-| Claude Code | `~/.claude/skills/` | `/multimodal-skill` 或自动发现 |
+| Claude Code | `~/.claude/skills/` | `/vision-bridge-skill` 或自动发现 |
 | 终端命令行 | 任意位置 | `python scripts/multimodal.py <参数>` |
 | 其他兼容工具 | 各自的 skills/rules 目录 | 将 SKILL.md 内容作为系统提示注入 |
 
 ## 文件结构
 
 ```
-multimodal-skill/
+vision-bridge-skill/
 ├── SKILL.md                        # 技能定义
 ├── README.md                       # 本文件
 ├── multimodal-config.example.json  # 配置模板

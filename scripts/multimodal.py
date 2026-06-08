@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Vision recognition script v3.3 — invoked by multimodal-skill
+Vision recognition script v3.3 — invoked by vision-bridge-skill
 
 Capabilities: images / documents (PDF) / multi-turn sessions / compression / retry
 
@@ -58,7 +58,7 @@ SESSION_DIR = SKILL_DIR / "sessions"
 def find_config():
     candidates = [
         SKILL_DIR / "multimodal-config.json",
-        Path.home() / ".claude" / "skills" / "multimodal-skill" / "multimodal-config.json",
+        Path.home() / ".claude" / "skills" / "vision-bridge-skill" / "multimodal-config.json",
     ]
     for p in candidates:
         if p.exists():
@@ -327,7 +327,7 @@ def is_url(path: str) -> bool:
 def download_url(url: str) -> str:
     """下载 URL 到临时文件，返回路径"""
     log(f"下载: {url}")
-    req = urllib_request.Request(url, headers={"User-Agent": "multimodal-skill/3.1"})
+    req = urllib_request.Request(url, headers={"User-Agent": "vision-bridge-skill/3.1"})
     try:
         with urllib_request.urlopen(req, timeout=30) as resp:
             data = resp.read()

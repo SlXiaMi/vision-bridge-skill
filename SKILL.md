@@ -1,5 +1,5 @@
 ---
-name: multimodal-skill
+name: vision-bridge-skill
 description: >-
   视觉识别：看照片、截图、文档、图表、扫描件。主模型分析需求、精准提问，识图模型回答。支持多轮追问逐步深入。
 license: MIT
@@ -16,9 +16,9 @@ metadata:
       name: 大文件自动压缩（可选）
 ---
 
-# /multimodal-skill — 视觉识别
+# /vision-bridge-skill — 视觉识别
 
-脚本路径：`skills/multimodal-skill/scripts/multimodal.py`
+脚本路径：`skills/vision-bridge-skill/scripts/multimodal.py`
 
 ---
 
