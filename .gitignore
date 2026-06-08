@@ -1,0 +1,9 @@
+# API 密钥配置（包含敏感信息）
+multimodal-config.json
+
+# 会话缓存
+sessions/
+
+# Python
+__pycache__/
+*.pyc
