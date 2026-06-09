@@ -5,7 +5,7 @@ description: >-
 license: MIT
 metadata:
   author: Claude Code
-  version: 3.4.0
+  version: 4.0.0
   created: 2026-06-08
   last_reviewed: 2026-06-09
   review_interval_days: 90
@@ -18,72 +18,264 @@ metadata:
 
 # /vision-bridge-skill — 视觉识别
 
-脚本路径：`skills/vision-bridge-skill/scripts/multimodal.py`
+脚本路径：`skills/vision-bridge-skill/scripts/vision-bridge.py`
 
 ---
 
-## 三步工作模板
+## 会话生命周期
 
-每次需要"看"任何视觉内容，按以下三步操作。**完成必须清理，不可省略第三步。**
+每次识别图片需要经过 **创建 → 问答（轮次不限）→ 清理** 三个阶段。
 
 ```
-❶ 首问（创建会话，内容编码一次）
-  multimodal.py <文件路径或网址> --ask "第一个精准问题" --session auto
-  → 会话名自动生成，如 auto-20260609-001
-
-❷ 追问（信息不够就继续，不限轮次）
-  multimodal.py --ask "下一个问题" --session auto-20260609-001
-  → 不带文件路径！缓存已复用，秒级响应
-
-❸ 收尾（必须执行）
-  multimodal.py --session auto-20260609-001 --clear
-  → 不清理也无大碍，24 小时后自动过期
+┌─ 创建会话 ──────────────────────────────────────┐
+│ vision-bridge.py <文件路径> --ask "问题" --session auto │
+│ → 图片编码缓存，会话名如 auto-20260609-001-143052    │
+└────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─ 问答（不限轮次，信息够了就停）──────────────────┐
+│ vision-bridge.py --ask "追问" --session auto-xxx │
+│ → 不带文件路径，缓存复用，秒级响应                 │
+│ → 可以追加图片：--add-image another.jpg           │
+└────────────────────────────────────────────────┘
+                     │
+                     ▼
+┌─ 清理（必须执行）───────────────────────────────┐
+│ vision-bridge.py --session auto-xxx --clear      │
+│ → 不清理也无大碍，24 小时后自动过期               │
+└────────────────────────────────────────────────┘
 ```
 
-**四条原则：**
-- 始终带 `--ask`，带着目的问，不盲目全量描述
-- 预计需要多步分析就加 `--session auto`
-- 追问时不带文件路径
-- 完成必须 `--clear`
+**原则：**
+- 始终带 `--ask`，带着目的问，不问空泛的"描述一下"
+- 需要多轮分析时加 `--session auto`
+- 追问不带文件路径（图片已缓存）
+- 问答结束必须 `--clear`
+- **轮次不限**，根据信息充分程度自行判断何时停止
+- **并行优先**：需要探索一段范围（多页 PDF、多张图片、多个目录）时，用批量/范围参数一次覆盖，不要逐条串行试探。范围搜索永远比逐点搜索快
+
+## AI-to-AI 通信协议
+
+主 AI 和识图 AI 之间使用 **Markdown 协议格式** 通信——不是自然语言，是两个 AI 之间的高效数据交换。跟用户对话用自然语言，AI 之间用协议。
+
+### 协议定义
+
+**主 AI 发出的请求格式：**
+```
+#q <图片类型>
+@ <需要获取的信息，关键词列表>
+> <输出格式要求：table/list/code/spec>
+```
+
+**识图 AI 返回的响应格式：**
+```
+#a
+##<信息项1>
+<内容，表格优先，原文照抄不解释>
+##<信息项2>
+<内容>
+```
+
+### 为什么
+
+| | 自然语言 | 协议格式 |
+|---|---------|-----|
+| 每次问 | "请详细描述截图内容，包括所有可见文字..." | `#q screenshot @文字,元素,错误 >table` |
+| 每 token 信息量 | 低 | 高 |
+| AI 理解开销 | 需要解析意图 | 直接执行指令 |
+| 通用性 | — | 任何图片类型，自由组合 @ 字段 |
+
+### 协议示例
+
+**截图类：**
+```
+主 AI → 识图: #q screenshot @文字,元素,代码,错误 >spec
+识图 → 主 AI:
+#a
+##文字
+> 用户登录 / 用户名 / 密码 / 记住密码 / 登录
+##元素
+| 类型 | 文本 | 位置 |
+|------|------|------|
+| 输入框 | - | 中部 |
+| 按钮 | 登录 | 底部 |
+| 复选框 | 记住密码 | 按钮旁 |
+##错误
+null
+```
+
+**文档/图表类：**
+```
+主 AI → 识图: #q diagram @符号,公式,标注,力学关系 >table
+识图 → 主 AI:
+#a
+##符号
+| T | 输入转矩 | 沿传动轴线 |
+| Fa | 地面驱动力 | 竖直向下 ↓ |
+| α | 主销内倾角 | — |
+##公式
+| 12-32 | Ta=Tv·sinα |
+| 12-33 | Tax=T·tan(β/2)·cosσ |
+| 12-34 | T1=Fa·r |
+##标注
+| 1 | 下横臂 | 连接车架 |
+| 2 | 球头销(下) | 铰接 |
+...
+```
+
+**照片/场景类：**
+```
+主 AI → 识图: #q photo @活动,地点,时间,人物,标志 >list
+识图 → 主 AI:
+#a
+##活动
+- 亲子趣味运动会
+##地点
+- 学校操场，人工草坪
+##时间
+- 春季/夏初，周末白天
+##人物
+- 儿童(3-7岁)，统一白绿校服
+- 成人(家长/志愿者)，红色马甲
+##标志
+- 彩色气球拱门
+- 卡通立牌
+```
+
+### 主 AI 怎么用
+
+1. 收到用户问题 → 分析需要什么信息 → 选 @ 字段
+2. 用协议格式拼 `--ask`，发给识图 AI
+3. 识图 AI 返回 `#a` 格式 → 主 AI 直接按 `##` 解析
+4. 把解析结果翻译成自然语言回复用户
+
+**追问仍然按协议：**
+```
+#q follow @<specify_target> >detail
+```
+如：`#q follow @符号:T:方向 >spec`
+
+### 协议字段参考
+
+| 字段 | 适用场景 | 含义 |
+|------|---------|------|
+| `@文字` | 截图/文档 | 所有可见文字原文 |
+| `@元素` | 截图/UI | UI 元素及位置 |
+| `@代码` | 截图/文档 | 代码块 |
+| `@错误` | 截图/日志 | 报错信息 |
+| `@符号` | 图表/公式 | 标注符号及含义 |
+| `@公式` | 图表/公式 | 数学表达式 |
+| `@标注` | 图纸/结构图 | 编号部件名称/功能 |
+| `@数据` | 图表/表格 | 数字数据(表格优先) |
+| `@趋势` | 图表 | 趋势描述 |
+| `@主体` | 照片 | 人物/物体 |
+| `@场景` | 照片 | 环境背景 |
+| `@活动` | 照片 | 发生的事件 |
+| `@时间` | 照片 | 可从画面推断的时间 |
+| `@地点` | 照片 | 地理位置/地标 |
+| `@标志` | 照片 | 文字/logo/品牌 |
+| `@细节` | 通用 | 需要的其他信息 |
+| `>table` | — | 输出用表格 |
+| `>list` | — | 输出用列表 |
+| `>spec` | — | 原文照抄，不解释 |
+
+## 自动选择模型（Profile 切换）
+
+每次识别图片时，**先用 `--list-profiles` 查看可用配置**，然后根据任务选择最合适的模型。
+
+**选择规则：**
+
+| 任务类型 | 选择依据 | 命令 |
+|----------|---------|------|
+| 日常截图、简单识别 | 默认配置即可 | `vision-bridge.py <文件> --ask "..."` |
+| 复杂图表、专业文档 | 需要更强模型 | `vision-bridge.py --profile <强模型> <文件> --ask "..."` |
+| 多图对比、批量处理 | 用默认配置 | 同上，加 `--add-image` 或通配符 |
+
+**操作流程：**
+1. 收到视觉任务时，先运行 `vision-bridge.py --list-profiles` 查看可用配置
+2. 根据任务复杂度选择合适的 profile
+3. 调用时带上 `--profile <名称>`（不带则用默认配置）
+4. **在回复用户时，说明当前使用的是哪个模型**（脚本日志中会显示）
+
+**示例：**
+```
+# 先看有哪些模型可用
+vision-bridge.py --list-profiles
+# 输出:
+#   --profile mimo          mimo-v2.5           anthropic   https://api.xiaomimimo.com/anthropic
+#   --profile gpt4v         gpt-4o              openai      https://api.openai.com
+
+# 用 mimo 模型识别
+vision-bridge.py --profile mimo photo.jpg --ask "描述内容" --session auto
+# 日志显示: 模型: mimo-v2.5 (anthropic) [profile:mimo]
+```
 
 ## 命令速查
 
 ```
-multimodal.py <文件> --ask "..." --session auto     日常用法
-multimodal.py --ask "..." --session <会话名>         追问
-multimodal.py <文件> --pdf-page N --ask "..."        指定页面
-multimodal.py <文件> --pdf-range M-N --ask "..."     连续页面
-multimodal.py <网址> --ask "..."                     在线资源
-multimodal.py --check                                校验配置
-multimodal.py --stats                                使用统计
-multimodal.py --list-sessions                        活跃会话
-multimodal.py --session <名> --export                导出对话
-multimodal.py --session <名> --clear                 清理会话
+# 基础用法
+vision-bridge.py <文件> --ask "..." --session auto        日常用法
+vision-bridge.py --ask "..." --session <会话名>            追问
+vision-bridge.py <文件> --pdf-page N --ask "..."           指定页面
+vision-bridge.py <文件> --pdf-range M-N --ask "..."        连续页面
+vision-bridge.py <网址> --ask "..."                        在线资源
+
+# 批量处理
+vision-bridge.py *.png --ask "识别文字"                    通配符批量
+vision-bridge.py img1.jpg img2.jpg --ask "对比差异"        多文件对比
+vision-bridge.py ./screenshots/ --ask "识别报错信息"       整个目录
+
+# 多图会话
+vision-bridge.py first.jpg --ask "描述内容" --session auto
+vision-bridge.py --ask "和新图片对比" --session <名> --add-image second.jpg
+
+# 高级选项
+vision-bridge.py <文件> --ask "#q photo @活动,地点" --protocol    协议模式（自动注入高效指令+裁废话）
+vision-bridge.py <文件> --ask "..." --output json                JSON 格式输出（供主 AI 解析）
+vision-bridge.py <文件> --ask "..." --system "你是医学影像专家"   自定义系统提示词
+vision-bridge.py <文件> --ask "..." --stream                     流式输出
+vision-bridge.py --profile gpt4v <文件> --ask "..."              使用指定配置
+
+# 管理命令
+vision-bridge.py --check                                校验配置
+vision-bridge.py --stats                                使用统计
+vision-bridge.py --list-sessions                        活跃会话
+vision-bridge.py --list-sessions -v                     详细会话列表
+vision-bridge.py --list-profiles                        可用配置列表
+vision-bridge.py --session <名> --export                导出 Markdown
+vision-bridge.py --session <名> --export --format txt   导出纯文本
+vision-bridge.py --session <名> --clear                 清理会话
 ```
 
 ## 示例
 
 ```
 # 看照片
-multimodal.py ~/photo.jpg --ask "描述场景、人物和活动" --session auto
-multimodal.py --ask "画面氛围和光线如何？" --session auto-20260609-001
-multimodal.py --session auto-20260609-001 --clear
+vision-bridge.py ~/photo.jpg --ask "描述场景、人物和活动" --session auto
+vision-bridge.py --ask "画面氛围和光线如何？" --session auto-20260609-001-143052
+vision-bridge.py --session auto-20260609-001-143052 --clear
 
-# 看截图
-multimodal.py ~/screenshot.png --ask "识别所有文字和错误信息" --session auto
-multimodal.py --session auto-20260609-001 --clear
+# 批量看截图
+vision-bridge.py ~/screenshots/*.png --ask "哪些有报错信息？"
+
+# 对比两张图
+vision-bridge.py before.jpg --ask "描述当前状态" --session auto
+vision-bridge.py --ask "对比两张图的差异" --session auto-20260609-001-143052 --add-image after.jpg
+vision-bridge.py --session auto-20260609-001-143052 --clear
 
 # 看文档
-multimodal.py ~/doc.pdf --pdf-page 20 --ask "列出核心内容" --session auto
-multimodal.py --ask "详细解释第三点" --session auto-20260609-001
-multimodal.py --session auto-20260609-001 --clear
+vision-bridge.py ~/doc.pdf --pdf-page 20 --ask "列出核心内容" --session auto
+vision-bridge.py --ask "详细解释第三点" --session auto-20260609-001-143052
+vision-bridge.py --session auto-20260609-001-143052 --clear
 
-# 看图表
-multimodal.py ~/chart.png --ask "横纵轴含义？趋势如何？" --session auto
-multimodal.py --session auto-20260609-001 --clear
+# 专业领域识别（自定义系统提示词）
+vision-bridge.py xray.png --ask "描述影像特征" --system "你是放射科医生" --session auto
 
-# 看在线图片
-multimodal.py https://example.com/diagram.png --ask "描述流程" --session auto
+# 流式输出（长结果实时显示）
+vision-bridge.py large-chart.png --ask "详细解读每个数据点" --stream
+
+# 切换配置（使用不同的 API 提供商）
+vision-bridge.py --profile gpt4v photo.jpg --ask "描述内容"
 ```
 
 ## 能力范围
@@ -95,15 +287,19 @@ multimodal.py https://example.com/diagram.png --ask "描述流程" --session aut
 | 文档查阅 | 指定页码、图表、表格 |
 | 图表解读 | 趋势图、流程图、技术图纸 |
 | 文字提取 | 图片或扫描件中的 OCR 文字 |
+| 批量处理 | 多文件/目录通配符，一次处理 |
+| 多图对比 | 同一会话追加新图片进行对比 |
 | 自动优化 | 大文件自动压缩、API 异常重试 |
 | 多轮对话 | 会话缓存，追问不重传 |
+| 流式输出 | 长响应实时打印，无需等待 |
 
 ## 配置
 
-配置文件 `multimodal-config.json`，与 SKILL.md 同目录：
+配置文件 `vision-bridge-config.json`，与 SKILL.md 同目录：
 
 ```json
 {
+  "enabled": true,
   "provider": "anthropic",
   "api_base_url": "https://your-api-endpoint.com",
   "api_key": "your-key",
@@ -111,18 +307,72 @@ multimodal.py https://example.com/diagram.png --ask "描述流程" --session aut
   "max_tokens": 4096,
   "compress_max_mb": 15,
   "max_retries": 3,
-  "session_ttl_hours": 24
+  "session_ttl_hours": 24,
+  "prompt": "默认提问内容"
 }
 ```
 
 | 字段 | 说明 |
 |------|------|
+| `enabled` | 是否启用（`false` 时拒绝执行） |
 | `provider` | `anthropic` 或 `openai`，决定请求格式 |
 | `api_key` | API 密钥，也可通过 `api_key_env` 从环境变量读取 |
 | `model` | 视觉模型名称 |
 | `compress_max_mb` | 超过此大小自动压缩（MB），默认 15 |
 | `max_retries` | 失败重试上限，默认 3 |
 | `session_ttl_hours` | 会话过期时间（小时），默认 24 |
+| `prompt` | 未指定 `--ask` 时的默认提问 |
+
+### 多配置 Profile
+
+在 `profiles/` 子目录下放置独立配置文件，通过 `--profile` 切换：
+
+```
+profiles/
+  gpt4v.json      → --profile gpt4v
+  local.json      → --profile local
+```
+
+配置文件格式与 `vision-bridge-config.json` 相同。
+
+## 新增参数
+
+| 参数 | 说明 |
+|------|------|
+| `--output text\|json` | 输出格式。`json` 供主 AI 解析，`text` 为人类可读（默认） |
+| `--system "..."` | 自定义系统提示词，针对不同场景定制模型行为 |
+| `--stream` | 流式输出，长响应实时打印 |
+| `--add-image <文件>` | 追问时追加新图片到会话（多图对比） |
+| `--profile <名>` | 使用 `profiles/<名>.json` 配置文件 |
+| `--verbose`, `-v` | `--list-sessions` 时显示详细信息 |
+| `--format md\|txt` | `--export` 的输出格式，默认 Markdown |
+
+### JSON 输出格式
+
+当使用 `--output json` 时，脚本输出结构化 JSON，主 AI 可直接解析：
+
+```json
+{
+  "answer": "图中显示一个登录界面，包含用户名和密码输入框...",
+  "session": "auto-20260609-001-143052",
+  "model": "mimo-v2.5",
+  "provider": "anthropic",
+  "round": 1,
+  "status": "ok"
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `answer` | 识图模型的回答文本 |
+| `session` | 会话名（用于追问） |
+| `model` | 使用的视觉模型 |
+| `provider` | API 提供商 |
+| `round` | 当前轮次 |
+| `status` | `ok` 或 `error` |
+| `error` | 错误信息（仅 status=error 时存在） |
+
+**主 AI 推荐用法：** 始终加 `--output json`，解析 JSON 获取 answer 和 session，追问时用返回的 session 名。
 
 ## 故障排查
 
@@ -133,4 +383,5 @@ multimodal.py https://example.com/diagram.png --ask "描述流程" --session aut
 | 会话不存在 | 先创建：带文件路径 + `--session auto` |
 | 会话名冲突 | `--force` 覆盖，或换名 |
 | 大文件超时 | 自动压缩中；可调高 `compress_max_mb` |
-| 网络不通 | 检查代理或 VPN |
+| 网络不通 | 检查代理或 VPN；设置 `HTTP_PROXY` 环境变量 |
+| Profile 找不到 | 检查 `profiles/<名>.json` 是否存在 |

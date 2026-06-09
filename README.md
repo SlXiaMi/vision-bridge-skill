@@ -2,200 +2,277 @@
 
 让不支持多模态的 AI 也能"看懂"视觉内容。
 
-[![Version](https://img.shields.io/badge/version-3.4.0-blue)](https://github.com/SlXiaMi/vision-bridge-skill)
+[![Version](https://img.shields.io/badge/version-4.1.0-blue)](https://github.com/SlXiaMi/vision-bridge-skill)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 ---
 
 ## 简介
 
-当主模型（如 DeepSeek 等纯文本模型）无法直接处理图片时，本技能充当"眼睛"——把视觉内容发送给专门的识图模型，结果以文字返回给主模型，让它间接获得视觉理解能力。
+当主模型无法直接处理图片时，本技能充当"眼睛"——把视觉内容发送给识图模型，结果以文字返回给主模型，让它间接获得视觉理解能力。
 
-**适用场景：** 照片分析、截图识别、文档查阅、图表解读、OCR 文字提取。
+**核心设计：** 主 AI 和识图 AI 之间用 **AI-to-AI 协议格式**（`#q @字段 >格式`）通信，高效、精准。跟用户对话用自然语言，AI 之间用协议。
+
+---
 
 ## 快速开始
 
-三步即可使用：
-
 ```bash
-# ❶ 安装
 git clone https://github.com/SlXiaMi/vision-bridge-skill.git ~/.claude/skills/vision-bridge-skill
-
-# ❷ 配置
 cd ~/.claude/skills/vision-bridge-skill
-cp multimodal-config.example.json multimodal-config.json
-# 编辑 multimodal-config.json，填入你的 API 地址、密钥和模型名
-
-# ❸ 验证
-python scripts/multimodal.py --check
+cp vision-bridge-config.example.json vision-bridge-config.json
+# 编辑 vision-bridge-config.json，填入 API 地址、密钥和模型名
+python scripts/vision-bridge.py --check
 ```
 
-## 效果演示
+---
+
+## 会话生命周期
+
+每次识别经过 **创建 → 问答（轮次不限）→ 清理** 三个阶段：
 
 ```
-用户: 这张照片讲了什么故事？
-
-主模型: [调用 multimodal.py photo.jpg --ask "描述场景和活动" --session auto]
-识图模型: 绿色草坪上，家长和孩子共同托举彩虹伞，周围有卡通充气道具...
-主模型: [追问: --ask "参与者的年龄和着装？" --session auto-20260609-001]
-识图模型: 儿童约3-7岁穿统一校服，成人着便装，红色马甲志愿者...
-主模型: [清理会话]
-        → 总结回答用户：这是一场幼儿园亲子运动会...
+❶ 创建会话 ─ vision-bridge.py <文件> --ask "问题" --session auto --output json
+❷ 问答     ─ 不限轮次，信息够了就停。用协议格式（#q @字段 >格式）
+❸ 清理     ─ vision-bridge.py --session <会话名> --clear（必须执行）
 ```
 
-## 使用方式
+---
 
-### 基本用法
+## 基础用法
 
 ```bash
-# 精准提问（推荐 —— 带着目的问，不盲目全量描述）
-python scripts/multimodal.py 照片.jpg --ask "描述人物和场景" --session auto
+# 单次识别
+vision-bridge.py 照片.jpg --ask "#q photo @活动,地点,时间 >list" --session auto --output json
 
-# 多轮追问（信息不够就继续，不限轮次）
-python scripts/multimodal.py --ask "画面氛围如何？" --session auto-20260609-001
-python scripts/multimodal.py --ask "有什么文字标识？" --session auto-20260609-001
+# 多轮追问（图片已缓存，秒级响应）
+vision-bridge.py --ask "画面氛围如何？" --session auto-xxx --output json
+vision-bridge.py --ask "有什么文字标识？" --session auto-xxx --output json
 
-# 完成必须清理
-python scripts/multimodal.py --session auto-20260609-001 --clear
+# 清理
+vision-bridge.py --session auto-xxx --clear
 ```
 
-### 文档页面
+### PDF 文档
 
 ```bash
-python scripts/multimodal.py 文档.pdf --pdf-page 20 --ask "列出核心内容" --session auto
-python scripts/multimodal.py 文档.pdf --pdf-range 20-25 --ask "总结这几页" --session auto
+# 单页（并行渲染，4 线程）
+vision-bridge.py 文档.pdf --pdf-page 20 --ask "#q diagram @符号,公式 >table" --session auto
+
+# 多页范围
+vision-bridge.py 文档.pdf --pdf-range 20-25 --ask "总结这几页" --session auto
+
+# 调整清晰度 + 增强对比度
+vision-bridge.py 文档.pdf --pdf-page 1 --dpi 300 --enhance --ask "#q text @文字 >spec"
 ```
 
 ### 在线资源
 
 ```bash
-python scripts/multimodal.py https://example.com/chart.png --ask "分析趋势" --session auto
+vision-bridge.py https://example.com/chart.png --ask "#q chart @数据,趋势 >table"
 ```
 
-### 管理命令
+---
+
+## AI-to-AI 协议格式
+
+主 AI 和识图 AI 通信使用协议格式，不用自然语言。
+
+```
+请求:  #q <图片类型> @<信息字段> ><输出格式>
+响应:  #a + Markdown 表格/列表
+
+示例:  #q diagram @符号,公式,标注 >table
+       → 识图 AI 返回纯表格，无问候语、无总结
+```
+
+| 常用 @ 字段 | 含义 | 常用 > 格式 | 含义 |
+|-------------|------|------------|------|
+| `@文字` `@符号` `@公式` | 内容提取 | `>table` | Markdown 表格 |
+| `@元素` `@标注` `@部件` | 结构识别 | `>list` | 列表 |
+| `@数据` `@趋势` `@关系` | 分析解读 | `>spec` | 原文照抄不解释 |
+| `@活动` `@地点` `@时间` | 场景信息 | | |
+
+**追问：** `#q follow @上次没问到的字段 >格式`
+
+---
+
+## 进阶功能
+
+### `--protocol` 协议模式
+
+自动注入高效系统指令 + 裁剪废话。识图 AI 不按格式返回时会自动重试一次。
 
 ```bash
-python scripts/multimodal.py --check               # 验证配置
-python scripts/multimodal.py --list-sessions       # 活跃会话列表
-python scripts/multimodal.py --stats               # 使用统计
-python scripts/multimodal.py --session <名> --export  # 导出对话
-python scripts/multimodal.py --session <名> --clear   # 清理会话
+vision-bridge.py 图表.png --ask "#q chart @数据,趋势 >table" --protocol --output json
 ```
 
-## 工作原理
+### `--output json` 结构化输出
+
+给主 AI 解析用，返回 JSON：
+
+```json
+{"answer": "...", "session": "auto-xxx", "model": "mimo-v2.5", "round": 1, "status": "ok"}
+```
+
+### 批量处理
+
+```bash
+vision-bridge.py ~/screenshots/*.png --ask "哪些有报错？"
+vision-bridge.py img1.jpg img2.jpg --ask "对比差异"
+vision-bridge.py ./documents/ --ask "列出所有图表标题"
+```
+
+### 多图对比
+
+```bash
+vision-bridge.py before.jpg --ask "#q photo @主体 >list" --session auto
+vision-bridge.py --ask "对比差异" --session auto-xxx --add-image after.jpg
+vision-bridge.py --session auto-xxx --clear
+```
+
+### `--profile` 多配置
 
 ```
-用户提问
-    │
-    ▼
-┌──────────────┐     ┌──────────────┐
-│  主模型       │────▶│  识图模型     │
-│  分析需求     │ 图片 │  接收视觉内容 │
-│  拆解问题     │+问题│  返回文字描述 │
-│  决策追问     │◀────│              │
-└──────────────┘ 文字 └──────────────┘
-    │
-    ▼
-  整理回答 → 返回用户
-
-会话机制：图片只编码一次，后续追问只传文字，秒级响应。
+profiles/
+  gpt4v.json  →  --profile gpt4v
+  local.json  →  --profile local
 ```
+
+```bash
+vision-bridge.py --profile gpt4v photo.jpg --ask "#q photo @主体,场景"
+vision-bridge.py --list-profiles   # 查看可用配置
+```
+
+### `--system` 角色设定
+
+```bash
+vision-bridge.py xray.png --ask "#q medical @符号,特征 >spec" \
+  --system "你是放射科医生" --protocol
+```
+
+### `--stream` 流式输出 + `--enhance` 图像增强
+
+```bash
+vision-bridge.py chart.png --ask "#q chart @数据 >table" --stream
+vision-bridge.py 模糊文档.pdf --pdf-page 1 --enhance --ask "#q text @文字 >spec"
+```
+
+---
+
+## 管理命令
+
+```bash
+vision-bridge.py --check                      # 验证配置
+vision-bridge.py --check --profile gpt4v      # 验证指定 profile
+vision-bridge.py --stats                      # 使用统计
+vision-bridge.py --list-sessions              # 活跃会话
+vision-bridge.py --list-sessions -v           # 详细信息
+vision-bridge.py --list-profiles              # 可用配置
+vision-bridge.py --session <名> --status      # 会话详情
+vision-bridge.py --session <名> --export      # 导出 Markdown
+vision-bridge.py --session <名> --clear       # 清理会话
+vision-bridge.py --version                    # 版本号
+```
+
+---
 
 ## 配置
 
-编辑 `multimodal-config.json`：
+`vision-bridge-config.json`：
 
 ```json
 {
+  "enabled": true,
   "provider": "anthropic",
   "api_base_url": "https://your-api-endpoint.com",
-  "api_key": "your-api-key",
+  "api_key": "your-key",
   "model": "your-vision-model",
   "max_tokens": 4096,
   "compress_max_mb": 15,
   "max_retries": 3,
-  "session_ttl_hours": 24
+  "session_ttl_hours": 24,
+  "max_history_rounds": 8,
+  "prompt": "默认提问内容"
 }
 ```
 
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `provider` | 是 | `anthropic` 或 `openai`，决定 API 请求格式 |
-| `api_base_url` | 是 | API 端点地址，兼容任何实现对应格式的服务 |
-| `api_key` | 是 | API 密钥。也可留空，通过 `api_key_env` 从环境变量读取 |
-| `model` | 是 | 视觉模型名称 |
-| `max_tokens` | 否 | 单次返回上限，默认 4096 |
-| `compress_max_mb` | 否 | 超过此大小自动压缩（MB），默认 15 |
-| `max_retries` | 否 | 失败重试次数，默认 3 |
-| `session_ttl_hours` | 否 | 会话过期时间（小时），默认 24 |
+| 字段 | 说明 |
+|------|------|
+| `provider` | `anthropic` 或 `openai` |
+| `api_base_url` | API 端点地址 |
+| `api_key` | API 密钥（也可用 `api_key_env` 从环境变量读取） |
+| `model` | 视觉模型名称 |
+| `compress_max_mb` | 超过此大小自动压缩（MB），默认 15 |
+| `max_retries` | 失败重试次数，默认 3 |
+| `session_ttl_hours` | 会话过期时间（小时），默认 24 |
+| `max_history_rounds` | 长会话自动截断阈值，超过后保留首尾压缩中间，默认 8 |
+| `prompt` | 未指定 `--ask` 时的默认提问 |
 
-## 命令参数
+---
+
+## 完整参数
 
 | 参数 | 说明 |
 |------|------|
-| `--ask "问题"` | 精准提问，替代全量描述 |
-| `--session auto` | 自动创建会话（推荐） |
-| `--session <名>` | 指定会话名 |
-| `--pdf-page N` | 文档指定页码 |
-| `--pdf-range M-N` | 文档连续页码 |
-| `--dpi N` | 文档渲染清晰度（默认 200） |
-| `--no-compress` | 跳过自动压缩 |
+| `file_path` | 文件路径、目录或 URL，支持多个 |
+| `--ask` | 提问内容（推荐用协议格式） |
+| `--output text\|json` | 输出格式，默认 text |
+| `--protocol` | 协议模式：自动注入高效指令 + 裁剪废话 + 格式校验重试 |
+| `--system` | 系统提示词 |
+| `--stream` | 流式输出 |
+| `--session auto\|<名>` | 会话管理 |
+| `--add-image <文件>` | 追加图片到会话 |
+| `--profile <名>` | 切换配置 |
+| `--enhance` | PDF 图片对比度增强（Pillow 可选） |
+| `--pdf-page N` | 指定 PDF 页码 |
+| `--pdf-range M-N` | PDF 页码范围（并行渲染，4 线程） |
+| `--dpi N` | 渲染 DPI，默认 200 |
+| `--no-compress` | 跳过压缩 |
 | `--force` | 覆盖已有会话 |
-| `--export` | 导出会话对话文本 |
-| `--profile <名>` | 切换配置方案 |
-| `--check` | 验证 API 配置 |
+| `--verbose` `-v` | 详细输出 |
+| `--format md\|txt` | 导出格式 |
+| `--check` | 配置校验 |
 | `--stats` | 使用统计 |
-| `--list-sessions` | 活跃会话列表 |
+| `--list-sessions` | 会话列表 |
+| `--list-profiles` | 配置列表 |
+| `--clear` | 清理会话 |
+| `--version` | 版本号 |
+
+---
 
 ## 依赖
 
 ```bash
-pip install PyMuPDF    # 文档渲染（处理 PDF 等需要，必需）
-pip install Pillow      # 大文件压缩（可选，不装则跳过）
+pip install PyMuPDF    # PDF 渲染（必需）
+pip install Pillow      # 压缩 + 增强（可选）
 ```
 
 ## API 兼容
 
-| provider | 请求路径 | 认证头 | 适用模型举例 |
-|----------|---------|--------|-------------|
-| `anthropic` | `/v1/messages` | `x-api-key` | Claude、MiMo 及兼容 API |
-| `openai` | `/chat/completions` | `Authorization: Bearer` | GPT-4o、DeepSeek Vision 及兼容 API |
+| provider | 路径 | 认证 | 适用模型 |
+|----------|------|------|---------|
+| `anthropic` | `/v1/messages` | `x-api-key` | Claude、MiMo |
+| `openai` | `/chat/completions` | `Authorization: Bearer` | GPT-4o、DeepSeek Vision、Ollama |
 
-**只要 API 端点实现了上述格式，无论官方还是第三方中转，均可使用。**
-
-## 跨平台
-
-本技能基于标准 SKILL.md 规范，可在多个 AI 工具中使用。
-
-| 工具 | 安装位置 | 调用方式 |
-|------|---------|---------|
-| Claude Code | `~/.claude/skills/` | `/vision-bridge-skill` 或自动发现 |
-| 终端命令行 | 任意位置 | `python scripts/multimodal.py <参数>` |
-| 其他兼容工具 | 各自的 skills/rules 目录 | 将 SKILL.md 内容作为系统提示注入 |
+---
 
 ## 文件结构
 
 ```
 vision-bridge-skill/
-├── SKILL.md                        # 技能定义
-├── README.md                       # 本文件
-├── multimodal-config.example.json  # 配置模板
-├── multimodal-config.json          # 实际配置（不入库）
-├── .gitignore
+├── SKILL.md
+├── README.md
+├── vision-bridge-config.json
+├── vision-bridge-config.example.json
+├── profiles/
+│   ├── example.json
+│   └── <自定义>.json
 ├── scripts/
-│   └── multimodal.py               # 核心脚本（~900 行）
-└── sessions/                       # 会话缓存（自动清理）
-    └── <会话名>/
-        ├── meta.json                # 对话历史
-        └── image.b64                # 图片缓存
+│   └── vision-bridge.py       # ~1400 行
+├── sessions/                  # 自动清理
+└── references/
 ```
-
-## 限制
-
-- 不支持视频（需外部工具先截图）
-- 多张独立图片需逐一调用，不支持批量对比
-- 会话过期前占用磁盘（超时自动清理，默认 24h）
-- 识别质量取决于底层视觉模型的能力
 
 ## License
 

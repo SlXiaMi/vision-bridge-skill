@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "provider": "anthropic",
+  "api_base_url": "https://your-api-endpoint.com",
+  "api_key_env": "",
+  "api_key": "your-api-key-here",
+  "model": "your-vision-model",
+  "max_tokens": 4096,
+  "compress_max_mb": 15,
+  "max_retries": 3,
+  "session_ttl_hours": 24,
+  "max_history_rounds": 8,
+  "prompt": "识别图片内容，用 Markdown 结构化输出。根据图片类型使用合适的 section：文字（原文照抄）、元素（UI/物体列表）、代码（代码块）、错误（报错信息）、数据（数字/表格）、摘要（一句话总结）。"
+}

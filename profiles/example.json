@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "provider": "openai",
+  "api_base_url": "https://api.openai.com",
+  "api_key": "your-key-here",
+  "model": "gpt-4o",
+  "max_tokens": 4096,
+  "compress_max_mb": 15,
+  "max_retries": 3,
+  "session_ttl_hours": 24,
+  "prompt": "请详细描述这张图片的内容。"
+}
