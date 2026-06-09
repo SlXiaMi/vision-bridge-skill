@@ -2,7 +2,7 @@
 
 Give AI models without vision the ability to "see" visual content.
 
-[![Version](https://img.shields.io/badge/version-4.1.0-blue)](https://github.com/SlXiaMi/vision-bridge-skill)
+[![Version](https://img.shields.io/badge/version-4.2.0-blue)](https://github.com/SlXiaMi/vision-bridge-skill)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 ---

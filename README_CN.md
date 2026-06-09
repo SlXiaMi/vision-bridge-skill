@@ -4,7 +4,7 @@
 
 让不支持多模态的 AI 也能"看懂"视觉内容。
 
-[![Version](https://img.shields.io/badge/version-4.1.0-blue)](https://github.com/SlXiaMi/vision-bridge-skill)
+[![Version](https://img.shields.io/badge/version-4.2.0-blue)](https://github.com/SlXiaMi/vision-bridge-skill)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 ---
