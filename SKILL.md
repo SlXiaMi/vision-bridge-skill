@@ -5,7 +5,7 @@ description: >-
 license: MIT
 metadata:
   author: Claude Code
-  version: 4.0.0
+  version: 4.2.0
   created: 2026-06-08
   last_reviewed: 2026-06-09
   review_interval_days: 90
