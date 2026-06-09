@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Vision recognition script v4.1.0 — invoked by vision-bridge-skill
+Vision recognition script v4.2.0 — invoked by vision-bridge-skill
 
 Capabilities: images / documents (PDF) / multi-turn sessions / compression / retry
 
@@ -567,7 +567,7 @@ def is_url(path: str) -> bool:
 def download_url(url: str) -> str:
     """下载 URL 到临时文件，返回路径"""
     log(f"下载: {url}")
-    req = urllib_request.Request(url, headers={"User-Agent": "vision-bridge-skill/4.0.0"})
+    req = urllib_request.Request(url, headers={"User-Agent": "vision-bridge-skill/4.2.0"})
     try:
         with urllib_request.urlopen(req, timeout=30) as resp:
             data = resp.read()
@@ -978,8 +978,8 @@ def check_config(config, api_key):
 
 # ── 主入口 ────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Vision recognition v4.1.0")
-    parser.add_argument("--version", action="version", version="vision-bridge-skill v4.1.0")
+    parser = argparse.ArgumentParser(description="Vision recognition v4.2.0")
+    parser.add_argument("--version", action="version", version="vision-bridge-skill v4.2.0")
     parser.add_argument("file_path", nargs="*", help="File path(s), directory, or HTTP URL")
     parser.add_argument("--prompt", default="", help="Custom prompt (legacy)")
     parser.add_argument("--ask", default="", help="Targeted question")
