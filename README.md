@@ -21,9 +21,9 @@ cp vision-bridge-config.example.json vision-bridge-config.json
 python scripts/vision-bridge.py --check
 ```
 
-支持 / Features: 照片分析 / 截图识别 / PDF 查阅 / 图表解读 / OCR 文字提取 / 批量处理 / 多图对比 / 流式输出
+支持 / Features: 照片分析 / 截图识别 / PDF 查阅 / 图表解读 / OCR 文字提取 / 批量处理 / 多图对比 / 流式输出 / 置信度标记 / 自适应追问 / 空间锚定
 
-Photo analysis / Screenshot recognition / PDF documents / Chart reading / OCR / Batch processing / Multi-image comparison / Streaming
+Photo analysis / Screenshot recognition / PDF documents / Chart reading / OCR / Batch processing / Multi-image comparison / Streaming / Confidence markers / Adaptive follow-up / Spatial anchoring
 
 ## License
 
