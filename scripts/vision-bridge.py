@@ -27,8 +27,6 @@ Usage:
   python vision-bridge.py --stats
   python vision-bridge.py --list-sessions
   python vision-bridge.py --session <name> --export / --status / --clear
-  python vision-bridge.py --stats
-  python vision-bridge.py --session auto --ask "..." photo.jpg
 """
 
 import json
@@ -36,6 +34,7 @@ import sys
 import os
 import io
 import time
+import random
 import base64
 import shutil
 import tempfile
@@ -50,8 +49,11 @@ from urllib.parse import urlparse
 
 # 强制 UTF-8，解决 Windows 终端中文乱码
 if sys.platform == 'win32':
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, OSError):
+        pass  # 管道重定向或旧 Python 版本时静默跳过
 
 # ── 常量 ──────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
@@ -111,15 +113,16 @@ def safe_print(text: str, to_stderr: bool = False):
         print(text, file=dest)
     except UnicodeEncodeError:
         try:
-            print(text.encode('utf-8', errors='replace').decode('utf-8', errors='replace'), file=dest)
-        except:
+            enc = getattr(dest, 'encoding', 'utf-8') or 'utf-8'
+            print(text.encode(enc, errors='replace').decode(enc), file=dest)
+        except Exception:
             print(text.encode('ascii', errors='replace').decode('ascii'), file=dest)
 
 
-def log_conversation(round_num: int, question: str, answer: str):
-    """展示主AI↔识图AI之间的对话"""
-    # 只打印回答内容，不打印框架
-    print(f"\n{answer}", file=sys.stderr, flush=True)
+def log_conversation(round_num: int, model: str = ""):
+    """展示主AI↔识图AI之间的交流轮次（单行，不刷屏）"""
+    model_str = f"[{model}] " if model else ""
+    print(f"\n{model_str}第{round_num}轮", file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
@@ -127,18 +130,16 @@ def log_cleanup(session: str):
     print(f"[清理] {session}", file=sys.stderr, flush=True)
 
 
-def log_model_info(config, profile=""):
-    """打印当前使用的模型信息"""
-    model = config.get("model", "")
-    print(f"[{model}]", file=sys.stderr, flush=True)
-
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
                 round_num: int = 0, status: str = "", error: str = ""):
     """输出 JSON 格式结果（供主 AI 解析）"""
     # 自动检测错误：所有错误消息都以 "[" 开头
     if not status:
-        if answer.startswith("["):
+        # 仅匹配内部错误消息，避免误判 [确定]/[可能] 等置信度标记
+        _error_prefixes = ("[限流", "[服务器错误", "[API 错误", "[网络错误",
+                           "[未知错误", "[配置错误", "[重试耗尽")
+        if answer.startswith(_error_prefixes):
             status = "error"
             if not error:
                 error = answer
@@ -163,11 +164,17 @@ PROTOCOL_SYSTEM = (
     "Respond ONLY with the requested markdown format (tables, lists, code blocks). "
     "No greetings. No 'as shown in the figure'. No 'in summary'. "
     "No explanations unless explicitly asked. "
-    "Be terse and precise. Every word must carry information."
+    "Be terse and precise. Every word must carry information.\n\n"
+    "CONFIDENCE MARKERS (REQUIRED): Prefix every factual claim with exactly one marker:\n"
+    "- [确定] = 95%+ confident, clearly visible, no ambiguity\n"
+    "- [可能] = 70-95% confident, somewhat ambiguous or partially obscured\n"
+    "- [推测] = below 70%, inferring from context or educated guess\n"
+    "- [无法判断] = insufficient information, do NOT guess — just state what prevents judgment\n"
+    "Place the marker at the START of each ## section's content, not in the heading."
 )
 
 FILLER_PATTERNS = [
-    r'^[总综][上述]+[,，].*$',     # 综上所述/总之
+    r'^[总综][之上述]+[,，]?.*$',     # 综上所述/总之/综上
     r'^如图[所]?示[,，]?.*$',        # 如图所示
     r'^[以综][上][所述]*[,，].*$',    # 以上/综上
     r'^.*核心结论[是为].*$',          # 核心结论是
@@ -206,10 +213,18 @@ def retry_protocol(result: str, ask: str, messages: list, config: dict, api_key:
                    provider: str, system: str) -> tuple[str, bool]:
     """协议格式不匹配时自动重试一次。返回 (result, did_retry)"""
     if not ask or not validate_protocol(result, ask):
-        log("协议格式不匹配，自动重试...")
+        # 根据要求的格式生成针对性纠正提示
+        if ">table" in ask:
+            hint = "请用 Markdown 表格（| 列1 | 列2 |）回答，不要用段落文字。"
+        elif ">list" in ask:
+            hint = "请用列表（- 条目）回答，每项一行。"
+        elif ">spec" in ask:
+            hint = "请逐行照抄原文内容，不要总结或省略。"
+        else:
+            hint = "请只输出要求的格式，不要加问候语、总结或解释。"
         messages.append({"role": "user", "content": [{
             "type": "text",
-            "text": "Response did not match requested format. Return ONLY the requested markdown format (table/list), no explanations, no summaries."
+            "text": f"格式不匹配。{hint}"
         }]})
         # 重试时不 stream
         if provider in ("anthropic", "mimo"):
@@ -220,6 +235,22 @@ def retry_protocol(result: str, ask: str, messages: list, config: dict, api_key:
             return result, False
         return retry_result, True
     return result, False
+
+
+def _call_vision_api(provider: str, config: dict, api_key: str, messages: list,
+                     system: str, stream: bool, protocol: bool, ask: str) -> str:
+    """统一的 API 调用 + 协议验证 + 后处理。并行和串行共用。"""
+    if provider in ("anthropic", "mimo"):
+        result = call_anthropic_api(config, api_key, messages, system=system, stream=stream)
+    elif provider in ("openai",):
+        result = call_openai_api(config, api_key, messages, system=system, stream=stream)
+    else:
+        return f"[配置错误] 不支持的 provider: {provider}"
+
+    if protocol and not stream and not validate_protocol(result, ask):
+        result, _ = retry_protocol(result, ask, messages, config, api_key, provider, system)
+
+    return finalize_answer(result, protocol)
 
 
 # ── 配置 ──────────────────────────────────────────
@@ -358,9 +389,12 @@ def validate_protocol(response: str, ask: str) -> bool:
     if ">list" in ask:
         return any(line.strip().startswith("- ") or line.strip().startswith("* ") for line in response.split("\n"))
     if ">spec" in ask:
-        # spec 模式：密度检查（行均字符数 > 30，不能太短）
+        # spec 模式：至少 3 行且平均行字符数 > 20（原文照抄不能太短）
         lines = [l for l in response.split("\n") if l.strip()]
-        return len(lines) >= 2
+        if len(lines) < 3:
+            return False
+        avg_len = sum(len(l) for l in lines) / len(lines)
+        return avg_len > 20
     return True  # 无特定格式要求
 
 
@@ -466,14 +500,6 @@ def save_session(name: str, images: list = None, image_b64: str = "",
         if image_b64:
             images.append({"b64": image_b64, "media_type": media_type, "file_name": file_name})
 
-    # 图片数据保存到 image.b64（兼容旧格式：取第一张；多图用 JSON）
-    img_path = session_image_path(name)
-    if not img_path.exists():
-        if len(images) == 1:
-            img_path.write_text(images[0]["b64"], encoding="utf-8")
-        else:
-            img_path.write_text(json.dumps(images), encoding="utf-8")
-
     # 保持首次创建时间不变
     existing_created = None
     mp = session_meta_path(name)
@@ -505,27 +531,29 @@ def load_session(name: str) -> dict:
     if not session_exists(name):
         raise FileNotFoundError(f"会话 '{name}' 不存在")
     meta = json.loads(session_meta_path(name).read_text(encoding="utf-8"))
-    img_raw = session_image_path(name).read_text(encoding="utf-8").strip()
 
-    # 兼容：image.b64 可能是纯 base64（单图）或 JSON 数组（多图）
-    if "images" in meta and meta["images"]:
-        # 新格式：meta.json 中已有 images 列表
-        pass
-    else:
-        # 旧格式：从 image.b64 和 meta 中恢复
+    # 兼容旧格式：从 image.b64 恢复（新会话已不写此文件）
+    if "images" not in meta or not meta.get("images"):
         try:
-            images = json.loads(img_raw)
-            if isinstance(images, list):
-                meta["images"] = images
-            else:
-                raise ValueError
-        except (json.JSONDecodeError, ValueError):
-            meta["images"] = [{"b64": img_raw,
-                               "media_type": meta.get("media_type", "image/png"),
-                               "file_name": meta.get("file_name", "")}]
+            img_raw = session_image_path(name).read_text(encoding="utf-8").strip()
+        except (FileNotFoundError, OSError):
+            img_raw = ""
+        if img_raw:
+            try:
+                images = json.loads(img_raw)
+                if isinstance(images, list):
+                    meta["images"] = images
+                else:
+                    raise ValueError
+            except (json.JSONDecodeError, ValueError):
+                meta["images"] = [{"b64": img_raw,
+                                   "media_type": meta.get("media_type", "image/png"),
+                                   "file_name": meta.get("file_name", "")}]
+        else:
+            meta["images"] = []
 
     # 保持向后兼容：image_b64 取第一张
-    meta["image_b64"] = meta["images"][0]["b64"] if meta["images"] else img_raw
+    meta["image_b64"] = meta["images"][0]["b64"] if meta.get("images") else ""
     return meta
 
 
@@ -557,8 +585,8 @@ def cleanup_expired_sessions(ttl_hours: int = 24) -> int:
             if last_time < cutoff:
                 delete_session(name)
                 removed += 1
-        except Exception:
-            pass
+        except Exception as e:
+            log(f"跳过损坏会话 {name}: {e}")
     return removed
 
 
@@ -566,7 +594,7 @@ def auto_session_name() -> str:
     """自动生成会话名，含时间戳后缀防并发冲突"""
     now = datetime.now()
     today = now.strftime("%Y%m%d")
-    existing = [n for n in list_sessions() if n.startswith(f"auto-{today}")]
+    existing = [d.name for d in SESSION_DIR.iterdir() if d.is_dir() and d.name.startswith(f"auto-{today}")]
     seq = len(existing) + 1
     ts = now.strftime("%H%M%S")
     return f"auto-{today}-{seq:03d}-{ts}"
@@ -588,16 +616,12 @@ def download_url(url: str) -> str:
     try:
         with urllib_request.urlopen(req, timeout=30) as resp:
             data = resp.read()
+            content_type = resp.headers.get("Content-Type", "")
     except Exception as e:
         raise RuntimeError(f"下载失败: {e}")
 
     # 从 URL 或 Content-Type 推断扩展名
     ext = ".jpg"
-    content_type = ""
-    try:
-        content_type = resp.headers.get("Content-Type", "")
-    except Exception:
-        pass
     if "png" in content_type:
         ext = ".png"
     elif "webp" in content_type:
@@ -752,12 +776,16 @@ def truncate_history(messages: list, max_rounds: int = 8) -> list:
 
     # 中间插入摘要
     skipped = (len(messages) - keep_head - len(tail)) // 2
-    summary = {"role": "user", "content": [
-        {"type": "text", "text": f"[中间 {skipped} 轮对话已截断以节省 token。继续当前问题。]"}
-    ]}
-    summary_assist = {"role": "assistant", "content": "[已截断]"}
-
-    truncated = head + [summary, summary_assist] + tail
+    if skipped > 0:
+        summary = {"role": "user", "content": [
+            {"type": "text", "text": f"[中间 {skipped} 轮对话已截断以节省 token。继续当前问题。]"}
+        ]}
+        summary_assist = {"role": "assistant", "content": [
+            {"type": "text", "text": "[已截断]"}
+        ]}
+        truncated = head + [summary, summary_assist] + tail
+    else:
+        truncated = head + tail
     log(f"会话截断: {len(messages)//2}轮 → {len(truncated)//2}轮（节省 {skipped} 轮）")
     return truncated
 
@@ -790,8 +818,8 @@ def api_request_with_retry(fn, max_retries: int = 3) -> str:
             last_error = str(e)
             should_retry = True
         if attempt <= max_retries and should_retry:
-            wait = 2 ** (attempt - 1)
-            log(f"[重试 {attempt}/{max_retries}] {last_error[:80]}，{wait}秒后重试...")
+            wait = 2 ** (attempt - 1) + random.uniform(0, 1)
+            log(f"[重试 {attempt}/{max_retries}] {last_error[:80]}，{wait:.1f}秒后重试...")
             time.sleep(wait)
     return f"[重试耗尽] {last_error}"
 
@@ -800,7 +828,7 @@ def _parse_sse_lines(resp) -> str:
     """解析 SSE 流式响应，逐块打印并返回完整文本"""
     collected = []
     for raw_line in resp:
-        line = raw_line.decode("utf-8").strip()
+        line = raw_line.decode("utf-8", errors="replace").strip()
         if not line or line.startswith(":"):
             continue
         if line.startswith("data: "):
@@ -1023,6 +1051,7 @@ def main():
     parser.add_argument("--output", choices=["text", "json"], default="text", help="Output format (text or json)")
     parser.add_argument("--protocol", action="store_true", help="AI-to-AI protocol mode: compact, table-first, no filler")
     parser.add_argument("--enhance", action="store_true", help="Enhance PDF image contrast for readability (Pillow required)")
+    parser.add_argument("--parallel", action="store_true", help="Parallel API calls for multi-image processing")
     args = parser.parse_args()
 
     # ── --profile 配置切换 ──────────────────────────
@@ -1041,10 +1070,20 @@ def main():
         if removed:
             log(f"已清理 {removed} 个过期会话，当前活跃 {active_count}")
     # ── enabled 检查（管理命令除外） ──────────────────
-    is_management_cmd = args.check or args.stats or args.list_sessions or args.export or args.clear or args.status
+    is_management_cmd = args.check or args.stats or args.list_sessions or args.export or args.clear or args.status or args.list_profiles
     if "error" not in config and not config.get("enabled", True) and not is_management_cmd:
         print("错误: 视觉识别已在配置中禁用 (enabled: false)", file=sys.stderr)
         sys.exit(1)
+
+    # ── stream + json 不兼容，强制关闭 stream ──────────
+    if args.stream and args.output == "json":
+        log("--stream 与 --output json 不兼容，已自动关闭流式输出")
+        args.stream = False
+
+    # ── stream + parallel 不兼容，强制关闭 stream ──────────
+    if args.stream and args.parallel:
+        log("--stream 与 --parallel 不兼容，已自动关闭流式输出")
+        args.stream = False
 
     # ── 配置校验模式 ──────────────────────────────
     if args.check:
@@ -1190,21 +1229,30 @@ def main():
                        "file_name": session.get("file_name", "")}]
 
         # --add-image: 追加新图片到会话
+        cleanup_add_url = None
         if args.add_image:
             add_path = args.add_image
             if is_url(add_path):
                 try:
                     add_path = download_url(add_path)
+                    cleanup_add_url = add_path  # 记录以便退出前清理
                 except RuntimeError as e:
                     print(f"错误: 下载追加图片失败: {e}", file=sys.stderr)
                     sys.exit(1)
             if not os.path.isfile(add_path):
                 print(f"错误: 追加图片不存在 — {args.add_image}", file=sys.stderr)
                 sys.exit(1)
-            cfg = load_config(args.profile)
-            img_b64, img_mime = encode_image_base64(add_path, cfg)
-            images.append({"b64": img_b64, "media_type": img_mime,
-                           "file_name": Path(add_path).name})
+            if args.no_compress:
+                with open(add_path, "rb") as f:
+                    raw = base64.standard_b64encode(f.read()).decode("utf-8")
+                mime, _ = mimetypes.guess_type(add_path)
+                if not mime:
+                    mime = "image/png"
+                images.append({"b64": raw, "media_type": mime, "file_name": Path(add_path).name})
+            else:
+                img_b64, img_mime = encode_image_base64(add_path, config)
+                images.append({"b64": img_b64, "media_type": img_mime,
+                               "file_name": Path(add_path).name})
             log(f"追加图片: {Path(add_path).name} (共 {len(images)} 张)")
 
         # 把所有图片补回第一条 user 消息
@@ -1222,36 +1270,19 @@ def main():
         # 构建消息：历史 + 新问题
         question = args.ask
         history.append({"role": "user", "content": [{"type": "text", "text": question}]})
-        messages = history
+        messages = list(history)
 
-        config = load_config(args.profile)
-        if "error" in config:
-            print(f"错误: {config['error']}", file=sys.stderr)
-            sys.exit(1)
         api_key = get_api_key(config)
         provider = config.get("provider", "anthropic").lower()
 
         log(f"追问: {args.session} (第{session['rounds']+1}轮)")
-        log_model_info(config, args.profile)
 
-        if provider in ("anthropic", "mimo"):
-            result = call_anthropic_api(config, api_key, messages,
-                                        system=effective_system(args.system, args.protocol), stream=args.stream)
-        elif provider in ("openai",):
-            result = call_openai_api(config, api_key, messages,
-                                     system=effective_system(args.system, args.protocol), stream=args.stream)
-        else:
-            result = f"[配置错误] 不支持的 provider: {provider}"
-
-        # 协议验证 + 自动重试（非 stream 模式）
-        if args.protocol and not args.stream and not validate_protocol(result, args.ask):
-            result, _ = retry_protocol(result, args.ask, messages, config, api_key, provider,
-                                       effective_system(args.system, args.protocol))
-
-        result = finalize_answer(result, args.protocol)
+        result = _call_vision_api(provider, config, api_key, messages,
+                                  effective_system(args.system, args.protocol),
+                                  args.stream, args.protocol, args.ask)
 
         round_num = sum(1 for m in history if m.get("role") == "user")
-        log_conversation(round_num, question, result)
+        log_conversation(round_num, model=config.get("model", ""))
 
         # 更新会话（保存前去掉图片数据块）
         history.append({"role": "assistant", "content": result})
@@ -1271,6 +1302,12 @@ def main():
                         provider=config.get("provider", ""), round_num=session.get("rounds", 0) + 1)
         else:
             safe_print(result)
+        # 清理 add-image 下载的 URL 临时文件
+        if cleanup_add_url:
+            try:
+                os.unlink(cleanup_add_url)
+            except Exception:
+                pass
         return
 
     # ── 需要 file_path 的命令 ─────────────────────
@@ -1313,36 +1350,31 @@ def main():
     # 批量模式不指定 --session 时每个文件独立处理
     cleanup_files = []  # 需要清理的临时文件
 
-    # ── 逐文件处理 ────────────────────────────────
+    # ── 阶段1：收集所有图片 ────────────────────────
+    # 每条: (image_b64, media_type, label, source_file, file_idx)
+    all_images = []
     for file_idx, file_path in enumerate(expanded_files):
-        if len(expanded_files) > 1:
-            log(f"━━━ [{file_idx+1}/{len(expanded_files)}] {Path(file_path).name} ━━━")
+        file_local = file_path
 
         # URL 下载
-        cleanup_url_file = None
-        if is_url(file_path):
+        if is_url(file_local):
             try:
-                tmp = download_url(file_path)
-                cleanup_url_file = tmp
-                cleanup_files.append(tmp)
-                file_path = tmp
+                file_local = download_url(file_local)
+                cleanup_files.append(file_local)
             except RuntimeError as e:
                 print(f"错误: {e}", file=sys.stderr)
                 continue
 
-        images_to_process = []  # [(base64, media_type, label)]
-
-        # PDF 模式
+        # PDF
         if args.pdf_page:
-            if not is_pdf_file(file_path):
+            if not is_pdf_file(file_local):
                 print(f"错误: --pdf-page 仅用于 PDF 文件", file=sys.stderr)
                 continue
             log(f"PDF 第 {args.pdf_page} 页，渲染中...")
-            b64, mime = pdf_page_to_base64(file_path, args.pdf_page, dpi=args.dpi, enhance=args.enhance)
-            images_to_process.append((b64, mime, f"第{args.pdf_page}页"))
-
+            b64, mime = pdf_page_to_base64(file_local, args.pdf_page, dpi=args.dpi, enhance=args.enhance)
+            all_images.append((b64, mime, f"第{args.pdf_page}页", file_local, file_idx))
         elif args.pdf_range:
-            if not is_pdf_file(file_path):
+            if not is_pdf_file(file_local):
                 print(f"错误: --pdf-range 仅用于 PDF 文件", file=sys.stderr)
                 continue
             parts = args.pdf_range.split("-")
@@ -1355,104 +1387,125 @@ def main():
                 print(f"错误: --pdf-range 页码必须是数字，收到: {args.pdf_range}", file=sys.stderr)
                 continue
             log(f"PDF 第 {start}-{end} 页，渲染中...")
-            for idx, (b64, mime) in enumerate(pdf_range_to_base64_list(file_path, start, end, dpi=args.dpi, enhance=args.enhance)):
-                images_to_process.append((b64, mime, f"第{start+idx}页"))
-
-        # 普通图片模式
-        elif os.path.isfile(file_path):
-            if is_image_file(file_path):
+            for idx, (b64, mime) in enumerate(pdf_range_to_base64_list(file_local, start, end, dpi=args.dpi, enhance=args.enhance)):
+                all_images.append((b64, mime, f"第{start+idx}页", file_local, file_idx))
+        elif os.path.isfile(file_local):
+            if is_image_file(file_local):
                 if args.no_compress:
-                    with open(file_path, "rb") as f:
+                    with open(file_local, "rb") as f:
                         raw = base64.standard_b64encode(f.read()).decode("utf-8")
-                    mime, _ = mimetypes.guess_type(file_path)
+                    mime, _ = mimetypes.guess_type(file_local)
                     if not mime:
                         mime = "image/png"
-                    images_to_process.append((raw, mime, Path(file_path).name))
+                    all_images.append((raw, mime, Path(file_local).name, file_local, file_idx))
                 else:
-                    image_b64, media_type = encode_image_base64(file_path, config)
-                    images_to_process.append((image_b64, media_type, Path(file_path).name))
+                    image_b64, media_type = encode_image_base64(file_local, config)
+                    all_images.append((image_b64, media_type, Path(file_local).name, file_local, file_idx))
             else:
-                print(f"错误: 不支持的文件格式 — {Path(file_path).name}", file=sys.stderr)
-                continue
+                print(f"错误: 不支持的文件格式 — {Path(file_local).name}", file=sys.stderr)
         else:
             print(f"错误: 文件不存在 — {file_path}", file=sys.stderr)
-            continue
 
-        # 会话冲突检查
-        if args.session and session_exists(args.session) and not args.force:
-            print(f"错误: 会话 '{args.session}' 已存在，请用 --force 覆盖或换一个名字", file=sys.stderr)
-            continue
+    if not all_images:
+        print("错误: 没有找到可处理的图片", file=sys.stderr)
+        sys.exit(1)
 
-        # ── 识别每张图 ───────────────────────────
-        for i, (image_b64, media_type, label) in enumerate(images_to_process):
-            if len(images_to_process) > 1:
-                log(f"[{i+1}/{len(images_to_process)}] {label}")
+    # ── 确定提问文本 ─────────────────────────────
+    if args.ask:
+        question = args.ask
+    elif args.prompt:
+        question = args.prompt
+    else:
+        question = default_prompt
 
-            # 确定提问文本
-            if args.ask:
-                question = args.ask
-            elif args.prompt:
-                question = args.prompt
-            else:
-                question = default_prompt
+    # ── 阶段2：处理图片 ──────────────────────────
+    # 并行模式：多图同时调 API，结果按顺序输出
+    if args.parallel and len(all_images) > 1:
+        system = effective_system(args.system, args.protocol)
+        model_name = config.get("model", "")
 
-            # 构建 messages
-            history = []
-            session_b64 = image_b64
-            session_mime = media_type
+        def _process_one(packed):
+            i, image_b64, media_type, label, _source_file, _file_idx = packed
+            messages = build_messages(image_b64, media_type, question, [])
+            result = _call_vision_api(provider, config, api_key, messages,
+                                      system, args.stream, args.protocol, question)
+            return i, label, result
 
-            if args.session and session_exists(args.session):
-                session = load_session(args.session)
-                history = list(session["messages"])
-                max_rounds = config.get("max_history_rounds", 8)
-                if len(history) > max_rounds * 2:
-                    history = truncate_history(history, max_rounds)
-                session_b64 = session["image_b64"]
-                session_mime = session["media_type"]
+        items = [(i, *rest) for i, rest in enumerate(all_images)]
+        results = [None] * len(items)
 
-            image_for_api = session_b64 if history else image_b64
-            messages = build_messages(image_for_api, session_mime, question, history)
+        log(f"并行处理 {len(items)} 张图片...")
+        with ThreadPoolExecutor(max_workers=min(4, len(items))) as executor:
+            for i, label, result in executor.map(_process_one, items):
+                results[i] = (label, result)
 
-            log_model_info(config, args.profile)
+        total_rounds = len(results)
+        model_name = config.get("model", "")
+        print(f"\n[{model_name}] 共{total_rounds}轮", file=sys.stderr, flush=True)
 
-            if provider in ("anthropic", "mimo"):
-                result = call_anthropic_api(config, api_key, messages,
-                                            system=effective_system(args.system, args.protocol), stream=args.stream)
-            elif provider in ("openai",):
-                result = call_openai_api(config, api_key, messages,
-                                         system=effective_system(args.system, args.protocol), stream=args.stream)
-            else:
-                result = f"[配置错误] 不支持的 provider: {provider}"
-
-            # 协议验证 + 自动重试（非 stream 模式）
-            if args.protocol and not args.stream and not validate_protocol(result, args.ask):
-                result, _ = retry_protocol(result, args.ask, messages, config, api_key, provider,
-                                           effective_system(args.system, args.protocol))
-
-            result = finalize_answer(result, args.protocol)
-
-            round_num = sum(1 for m in messages if m.get("role") == "user")
-            log_conversation(round_num, question, result)
-
-            # 保存会话
-            if args.session:
-                history = list(history)
-                history.append({"role": "user", "content": [{"type": "text", "text": question}]})
-                history.append({"role": "assistant", "content": result})
-                save_session(args.session,
-                             images=[{"b64": session_b64, "media_type": session_mime,
-                                      "file_name": Path(file_path).name}],
-                             file_name=Path(file_path).name,
-                             messages=history,
-                             config=config)
-
+        for i, (label, result) in enumerate(results):
             if args.output == "json":
-                json_output(result, session=args.session, model=config.get("model", ""),
+                json_output(result, session="", model=model_name,
                             provider=config.get("provider", ""), round_num=1)
             else:
-                if len(expanded_files) > 1 or len(images_to_process) > 1:
+                if len(all_images) > 1:
                     print(f"\n===== {label} =====")
                 safe_print(result)
+    else:
+        # 串行模式（保持会话支持）
+        total_serial_rounds = 0
+        if len(all_images) > 1:
+            log(f"串行处理 {len(all_images)} 张图片...")
+        for file_idx, file_path in enumerate(expanded_files):
+            file_images = [(b64, mime, lbl) for b64, mime, lbl, sf, fi in all_images if fi == file_idx]
+            if not file_images:
+                continue
+
+            file_session = args.session
+            if args.session and len(expanded_files) > 1:
+                file_session = f"{args.session}-f{file_idx + 1}"
+            if file_session and session_exists(file_session) and not args.force:
+                print(f"错误: 会话 '{file_session}' 已存在，请用 --force 覆盖或换一个名字", file=sys.stderr)
+                continue
+
+            for i, (image_b64, media_type, label) in enumerate(file_images):
+                total_serial_rounds += 1
+
+                history = []
+                if file_session and session_exists(file_session):
+                    session = load_session(file_session)
+                    history = list(session["messages"])
+                    max_rounds = config.get("max_history_rounds", 8)
+                    if len(history) > max_rounds * 2:
+                        history = truncate_history(history, max_rounds)
+
+                messages = build_messages(image_b64, media_type, question, history)
+                result = _call_vision_api(provider, config, api_key, messages,
+                                          effective_system(args.system, args.protocol),
+                                          args.stream, args.protocol, args.ask)
+
+                if file_session:
+                    history = list(history)
+                    history.append({"role": "user", "content": [{"type": "text", "text": question}]})
+                    history.append({"role": "assistant", "content": result})
+                    save_session(file_session,
+                                 images=[{"b64": image_b64, "media_type": media_type,
+                                          "file_name": Path(file_path).name}],
+                                 file_name=Path(file_path).name,
+                                 messages=history,
+                                 config=config)
+
+                if args.output == "json":
+                    round_num = sum(1 for m in messages if m.get("role") == "user")
+                    json_output(result, session=file_session, model=config.get("model", ""),
+                                provider=config.get("provider", ""), round_num=round_num)
+                else:
+                    if len(expanded_files) > 1 or len(file_images) > 1:
+                        print(f"\n===== {label} =====")
+                    safe_print(result)
+
+        if total_serial_rounds > 1:
+            print(f"\n[{config.get('model', '')}] 共{total_serial_rounds}轮", file=sys.stderr, flush=True)
 
     # ── 临时文件清理 ──────────────────────────────
     for f in cleanup_files:

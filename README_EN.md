@@ -99,8 +99,7 @@ Follow-up: `#q follow @what_was_missed_or_needs_depth >format`
 ### New in v4.2.0
 
 - **Confidence Markers**: `[确定]` `[可能]` `[推测]` `[无法判断]` — the vision AI self-reports reliability, reducing false positives from 55% to near zero
-- **Adaptive Follow-up**: If one approach doesn't work, switch — narrower scope, different angle, simple verification. Same syntax, flexible strategy
-- **Spatial Anchoring**: `x:0.1-0.5,y:0.3-0.6` ratio-based coordinates to lock onto specific image regions
+- **Format-Correct Retry**: When protocol format doesn't match, auto-retry once with targeted correction hint. Strategy changes (narrower scope, different angle, verification) are left to the primary AI via new follow-ups
 - **Two-Phase Observation**: Comparison tasks first describe each image independently, then cross-reference — eliminates hallucination at the source
 
 ---
@@ -227,6 +226,7 @@ vision-bridge.py --version                    # Version number
 | `--add-image <file>` | Add image to existing session |
 | `--profile <name>` | Switch config profile |
 | `--enhance` | PDF image contrast enhancement (Pillow optional) |
+| `--parallel` | Multi-image parallel API calls, results in order (no `--session`) |
 | `--pdf-page N` | Specific PDF page |
 | `--pdf-range M-N` | PDF page range (parallel, 4 threads) |
 | `--dpi N` | Render DPI, default 200 |
