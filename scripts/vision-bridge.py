@@ -136,10 +136,10 @@ _model_logged = False
 _model_name = ""
 
 def log_model_info(config, profile=""):
-    """记录模型名，稍后与回答一起输出"""
+    """记录模型名：display_name > profile > model"""
     global _model_logged, _model_name
     if not _model_logged:
-        _model_name = config.get("model", "")
+        _model_name = config.get("display_name") or profile or config.get("model", "")
         _model_logged = True
 
 
