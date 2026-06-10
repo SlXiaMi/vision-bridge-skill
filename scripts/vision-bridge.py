@@ -117,30 +117,20 @@ def safe_print(text: str, to_stderr: bool = False):
 
 
 def log_conversation(round_num: int, question: str, answer: str):
-    """展示回答内容，首行带模型+轮次"""
-    global _model_name
-    header = f"[{_model_name} R{round_num}] " if _model_name else f"[R{round_num}] "
-    _model_name = ""
-    lines = answer.split('\n')
-    if lines:
-        lines[0] = header + lines[0]
-    print('\n'.join(lines), file=sys.stderr, flush=True)
+    """展示主AI↔识图AI之间的对话"""
+    # 只打印回答内容，不打印框架
+    print(f"\n{answer}", file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
     """展示清理确认"""
-    pass  # 清理静默，不打印
+    print(f"[清理] {session}", file=sys.stderr, flush=True)
 
-
-_model_logged = False
-_model_name = ""
 
 def log_model_info(config, profile=""):
-    """记录模型名：display_name > profile > model"""
-    global _model_logged, _model_name
-    if not _model_logged:
-        _model_name = config.get("display_name") or profile or config.get("model", "")
-        _model_logged = True
+    """打印当前使用的模型信息"""
+    model = config.get("model", "")
+    print(f"[{model}]", file=sys.stderr, flush=True)
 
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
@@ -1032,7 +1022,6 @@ def main():
     parser.add_argument("--list-profiles", action="store_true", help="List available config profiles")
     parser.add_argument("--output", choices=["text", "json"], default="text", help="Output format (text or json)")
     parser.add_argument("--protocol", action="store_true", help="AI-to-AI protocol mode: compact, table-first, no filler")
-    parser.add_argument("--no-header", action="store_true", help="Suppress model info header (for batch mode)")
     parser.add_argument("--enhance", action="store_true", help="Enhance PDF image contrast for readability (Pillow required)")
     args = parser.parse_args()
 
