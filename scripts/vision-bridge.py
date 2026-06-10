@@ -121,11 +121,10 @@ def log_conversation(round_num: int, question: str, answer: str, session_name: s
     log(f"Round {round_num} 完成")
     if session_name:
         conv_dir = SESSION_DIR / session_name
-        if conv_dir.exists():
-            log_path = conv_dir / "conversation.md"
-            with open(log_path, "w", encoding="utf-8") as f:
-                f.write(f"# Round {round_num}\n\n## Q\n{question}\n\n## A\n{answer}\n")
-            log(f"对话记录: {log_path}")
+        conv_dir.mkdir(parents=True, exist_ok=True)
+        log_path = conv_dir / "conversation.md"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"## Round {round_num}\n\n**Q:** {question}\n\n**A:** {answer}\n\n---\n")
 
 
 def log_cleanup(session: str):
