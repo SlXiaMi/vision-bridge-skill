@@ -118,22 +118,25 @@ def safe_print(text: str, to_stderr: bool = False):
 
 def log_conversation(round_num: int, question: str, answer: str):
     """展示主AI↔识图AI之间的对话"""
-    print(f"\n━━━ 第{round_num}轮 ━━━", file=sys.stderr, flush=True)
-    print(f"主AI: {question}", file=sys.stderr, flush=True)
-    print(f"识图AI: {answer}", file=sys.stderr, flush=True)
+    sep = "─" * 60
+    print(f"\n{sep}", file=sys.stderr, flush=True)
+    print(f"【第{round_num}轮】", file=sys.stderr, flush=True)
+    print(f"\n📤 你的提问:\n{question}", file=sys.stderr, flush=True)
+    print(f"\n📥 识图模型回答:\n{answer}", file=sys.stderr, flush=True)
+    print(sep, file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
     """展示清理确认"""
-    print(f"\n清理: {session} ✓", file=sys.stderr, flush=True)
+    print(f"\n🧹 已清理: {session}", file=sys.stderr, flush=True)
 
 
 def log_model_info(config, profile=""):
     """打印当前使用的模型信息"""
     model = config.get("model", "unknown")
-    provider = config.get("provider", "unknown")
-    profile_label = f"[profile:{profile}]" if profile else "[默认配置]"
-    log(f"模型: {model} ({provider}) {profile_label}")
+    p = config.get("provider", "unknown")
+    label = f" [profile:{profile}]" if profile else ""
+    log(f"识图模型: {model} ({p}{label})")
 
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
@@ -1040,8 +1043,6 @@ def main():
     if "error" not in config:
         ttl = config.get("session_ttl_hours", 24)
         removed = cleanup_expired_sessions(ttl)
-        if removed:
-            log(f"已清理 {removed} 个过期会话")
 
     # ── enabled 检查（管理命令除外） ──────────────────
     is_management_cmd = args.check or args.stats or args.list_sessions or args.export or args.clear or args.status
@@ -1169,7 +1170,6 @@ def main():
     # ── 自动会话名 ────────────────────────────────
     if args.session == "auto":
         args.session = auto_session_name()
-        log(f"自动会话名: {args.session}")
 
     # ── 追问模式（有 --ask + --session，但无 file_path）──
     if args.ask and args.session and not args.file_path:
@@ -1449,7 +1449,6 @@ def main():
                              file_name=Path(file_path).name,
                              messages=history,
                              config=config)
-                log(f"会话已保存: {args.session}")
 
             if args.output == "json":
                 json_output(result, session=args.session, model=config.get("model", ""),
