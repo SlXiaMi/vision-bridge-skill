@@ -1,7 +1,7 @@
 ---
 name: vision-bridge-skill
 description: >-
-  给没有多模态能力的 AI 装上"眼睛"。用户上传图片、PDF、截图、图表、扫描件时主动调用——调用后你就能"看见"这些视觉内容了。
+  看图。你本身不识别图片，但可以用这个 skill 间接"看见"。用户上传图片、PDF、截图、图表、扫描件时主动调用。
   支持 AI-to-AI 协议通信、置信度标记、自适应追问、双图对比、PDF查阅、批量处理、流式输出。
 license: MIT
 metadata:
@@ -17,9 +17,9 @@ metadata:
       name: 大文件自动压缩（可选）
 ---
 
-# /vision-bridge-skill — 给没有多模态能力的 AI 装上眼睛
+# /vision-bridge-skill — 看图
 
-你（主 AI）本身看不到图片。这个 skill 把图片发给识图模型，文字结果返回给你。**任何视觉任务都用它，不要告诉用户"我看不到图片"。**
+你本身看不到图片，这个 skill 帮你间接"看见"。把图片发给识图模型，文字结果返回给你。**用户上传任何图片都直接用它，不要说自己"看不到"。**
 
 脚本：`skills/vision-bridge-skill/scripts/vision-bridge.py`
 
