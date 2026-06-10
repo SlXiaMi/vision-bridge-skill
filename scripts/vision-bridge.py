@@ -117,14 +117,13 @@ def safe_print(text: str, to_stderr: bool = False):
 
 
 def log_conversation(round_num: int, question: str, answer: str):
-    """展示回答内容，首行带模型名"""
+    """展示回答内容，首行带模型+轮次"""
     global _model_name
-    prefix = f"[{_model_name}] " if _model_name else ""
+    header = f"[{_model_name} · R{round_num}] " if _model_name else f"[R{round_num}] "
     _model_name = ""
-    # 取第一行加模型前缀
     lines = answer.split('\n')
     if lines:
-        lines[0] = prefix + lines[0]
+        lines[0] = header + lines[0]
     print('\n'.join(lines), file=sys.stderr, flush=True)
 
 
