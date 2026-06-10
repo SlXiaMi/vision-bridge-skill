@@ -117,20 +117,18 @@ def safe_print(text: str, to_stderr: bool = False):
 
 
 def log_conversation(round_num: int, question: str, answer: str):
-    """展示主AI↔识图AI之间的对话"""
-    # 只打印回答内容，不打印框架
+    """展示对话摘要"""
     print(f"\n{answer}", file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
     """展示清理确认"""
-    print(f"[清理] {session}", file=sys.stderr, flush=True)
+    pass
 
 
 def log_model_info(config, profile=""):
-    """打印当前使用的模型信息"""
-    model = config.get("model", "")
-    print(f"[{model}]", file=sys.stderr, flush=True)
+    """打印模型信息"""
+    pass
 
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
@@ -1022,6 +1020,7 @@ def main():
     parser.add_argument("--list-profiles", action="store_true", help="List available config profiles")
     parser.add_argument("--output", choices=["text", "json"], default="text", help="Output format (text or json)")
     parser.add_argument("--protocol", action="store_true", help="AI-to-AI protocol mode: compact, table-first, no filler")
+    parser.add_argument("--no-header", action="store_true", help="Suppress model info header (for batch mode)")
     parser.add_argument("--enhance", action="store_true", help="Enhance PDF image contrast for readability (Pillow required)")
     args = parser.parse_args()
 
