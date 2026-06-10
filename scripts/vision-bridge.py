@@ -100,6 +100,18 @@ def log(msg):
     print(f"  {msg}", file=sys.stderr, flush=True)
 
 
+def log_conversation(round_num: int, question: str, answer: str):
+    """展示主AI↔识图AI之间的对话"""
+    print(f"\n━━━ 第{round_num}轮 ━━━", file=sys.stderr, flush=True)
+    print(f"主AI: {question[:200]}{'...' if len(question) > 200 else ''}", file=sys.stderr, flush=True)
+    print(f"识图AI: {answer[:300]}{'...' if len(answer) > 300 else ''}", file=sys.stderr, flush=True)
+
+
+def log_cleanup(session: str):
+    """展示清理确认"""
+    print(f"\n清理: {session} ✓", file=sys.stderr, flush=True)
+
+
 def log_model_info(config, profile=""):
     """打印当前使用的模型信息"""
     model = config.get("model", "unknown")
@@ -1131,7 +1143,7 @@ def main():
     if args.clear and args.session:
         if session_exists(args.session):
             delete_session(args.session)
-            print(f"Session '{args.session}' cleared")
+            log_cleanup(args.session)
         else:
             print(f"会话 '{args.session}' 不存在")
         return
@@ -1236,6 +1248,9 @@ def main():
                                        effective_system(args.system, args.protocol))
 
         result = finalize_answer(result, args.protocol)
+
+        round_num = sum(1 for m in history if m.get("role") == "user")
+        log_conversation(round_num, question, result)
 
         # 更新会话（保存前去掉图片数据块）
         history.append({"role": "assistant", "content": result})
@@ -1414,6 +1429,9 @@ def main():
                                            effective_system(args.system, args.protocol))
 
             result = finalize_answer(result, args.protocol)
+
+            round_num = sum(1 for m in messages if m.get("role") == "user")
+            log_conversation(round_num, question, result)
 
             # 保存会话
             if args.session:
