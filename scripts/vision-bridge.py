@@ -118,17 +118,17 @@ def safe_print(text: str, to_stderr: bool = False):
 
 def log_conversation(round_num: int, question: str, answer: str):
     """展示主AI↔识图AI之间的对话"""
-    sep = "─" * 60
+    sep = "─" * 56
     print(f"\n{sep}", file=sys.stderr, flush=True)
-    print(f"【第{round_num}轮】", file=sys.stderr, flush=True)
-    print(f"\n📤 你的提问:\n{question}", file=sys.stderr, flush=True)
-    print(f"\n📥 识图模型回答:\n{answer}", file=sys.stderr, flush=True)
+    print(f"  Round {round_num}", file=sys.stderr, flush=True)
+    print(f"\n  Q: {question}", file=sys.stderr, flush=True)
+    print(f"\n  A: {answer}", file=sys.stderr, flush=True)
     print(sep, file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
     """展示清理确认"""
-    print(f"\n🧹 已清理: {session}", file=sys.stderr, flush=True)
+    print(f"  [cleared] {session}", file=sys.stderr, flush=True)
 
 
 def log_model_info(config, profile=""):
