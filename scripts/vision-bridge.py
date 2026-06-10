@@ -117,8 +117,15 @@ def safe_print(text: str, to_stderr: bool = False):
 
 
 def log_conversation(round_num: int, question: str, answer: str):
-    """展示对话摘要"""
-    print(f"\n{answer}", file=sys.stderr, flush=True)
+    """展示回答内容，首行带模型名"""
+    global _model_name
+    prefix = f"[{_model_name}] " if _model_name else ""
+    _model_name = ""
+    # 取第一行加模型前缀
+    lines = answer.split('\n')
+    if lines:
+        lines[0] = prefix + lines[0]
+    print('\n'.join(lines), file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
@@ -127,13 +134,13 @@ def log_cleanup(session: str):
 
 
 _model_logged = False
+_model_name = ""
 
 def log_model_info(config, profile=""):
-    """打印模型信息（同进程只输出一次）"""
-    global _model_logged
+    """记录模型名，稍后与回答一起输出"""
+    global _model_logged, _model_name
     if not _model_logged:
-        model = config.get("model", "")
-        print(f"[{model}]", file=sys.stderr, flush=True)
+        _model_name = config.get("model", "")
         _model_logged = True
 
 
