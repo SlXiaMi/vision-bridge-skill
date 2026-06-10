@@ -118,8 +118,7 @@ def safe_print(text: str, to_stderr: bool = False):
 
 def log_conversation(round_num: int, question: str, answer: str):
     """展示主AI↔识图AI之间的对话"""
-    # 只打印回答内容，不打印框架
-    print(f"\n{answer}", file=sys.stderr, flush=True)
+    print(f"\nQ: {question}\n\n{answer}", file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
