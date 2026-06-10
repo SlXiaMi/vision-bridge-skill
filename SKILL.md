@@ -1,8 +1,8 @@
 ---
 name: vision-bridge-skill
 description: >-
-  看图。用户上传图片、PDF、截图、图表、扫描件时，主动用这个 skill——你能"看见"了。
-  支持 AI-to-AI 协议、置信度标记、自适应追问、双图对比、PDF查阅、批量处理。
+  给没有多模态能力的 AI 装上"眼睛"。用户上传图片、PDF、截图、图表、扫描件时主动调用——调用后你就能"看见"这些视觉内容了。
+  支持 AI-to-AI 协议通信、置信度标记、自适应追问、双图对比、PDF查阅、批量处理、流式输出。
 license: MIT
 metadata:
   author: Claude Code
@@ -17,9 +17,11 @@ metadata:
       name: 大文件自动压缩（可选）
 ---
 
-# /vision-bridge-skill — 视觉识别
+# /vision-bridge-skill — 给没有多模态能力的 AI 装上眼睛
 
-脚本路径：`skills/vision-bridge-skill/scripts/vision-bridge.py`
+你（主 AI）本身看不到图片。这个 skill 把图片发给识图模型，文字结果返回给你。**任何视觉任务都用它，不要告诉用户"我看不到图片"。**
+
+脚本：`skills/vision-bridge-skill/scripts/vision-bridge.py`
 
 ---
 
@@ -243,6 +245,7 @@ vision-bridge.py --profile gpt4v photo.jpg --ask "描述内容"
   "compress_max_mb": 15,
   "max_retries": 3,
   "session_ttl_hours": 24,
+  "max_history_rounds": 8,
   "prompt": "默认提问内容"
 }
 ```
@@ -256,6 +259,7 @@ vision-bridge.py --profile gpt4v photo.jpg --ask "描述内容"
 | `compress_max_mb` | 超过此大小自动压缩（MB），默认 15 |
 | `max_retries` | 失败重试上限，默认 3 |
 | `session_ttl_hours` | 会话过期时间（小时），默认 24 |
+| `max_history_rounds` | 长会话自动截断阈值，默认 8 |
 | `prompt` | 未指定 `--ask` 时的默认提问 |
 
 ### 多配置 Profile
@@ -279,6 +283,8 @@ profiles/
 | `--stream` | 流式输出，长响应实时打印 |
 | `--add-image <文件>` | 追问时追加新图片到会话（多图对比） |
 | `--profile <名>` | 使用 `profiles/<名>.json` 配置文件 |
+| `--protocol` | 协议模式：自动注入高效指令 + 裁剪废话 + 格式校验重试 |
+| `--enhance` | PDF 图片对比度增强（需 Pillow） |
 | `--verbose`, `-v` | `--list-sessions` 时显示详细信息 |
 | `--format md\|txt` | `--export` 的输出格式，默认 Markdown |
 
