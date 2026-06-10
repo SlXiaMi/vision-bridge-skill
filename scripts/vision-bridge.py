@@ -117,19 +117,18 @@ def safe_print(text: str, to_stderr: bool = False):
 
 
 def log_conversation(round_num: int, question: str, answer: str):
-    """展示主AI↔识图AI之间的对话"""
-    print(f"\nQ: {question}\n\n{answer}", file=sys.stderr, flush=True)
+    """将对话写入会话文件，终端不显示"""
+    pass
 
 
 def log_cleanup(session: str):
-    """展示清理确认"""
-    print(f"[清理] {session}", file=sys.stderr, flush=True)
+    """清理确认"""
+    pass
 
 
 def log_model_info(config, profile=""):
-    """打印当前使用的模型信息"""
-    model = config.get("model", "")
-    print(f"[{model}]", file=sys.stderr, flush=True)
+    """模型信息"""
+    pass
 
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
