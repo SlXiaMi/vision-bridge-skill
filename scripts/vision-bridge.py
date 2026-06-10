@@ -1040,11 +1040,8 @@ def main():
     if "error" not in config:
         ttl = config.get("session_ttl_hours", 24)
         removed = cleanup_expired_sessions(ttl)
-        active_count = len(list_sessions())
         if removed:
-            log(f"已清理 {removed} 个过期会话，当前活跃 {active_count}")
-        elif active_count > 0:
-            log(f"当前活跃会话 {active_count}（完成识别请用 --clear 清理）")
+            log(f"已清理 {removed} 个过期会话")
 
     # ── enabled 检查（管理命令除外） ──────────────────
     is_management_cmd = args.check or args.stats or args.list_sessions or args.export or args.clear or args.status
