@@ -123,12 +123,18 @@ def log_conversation(round_num: int, question: str, answer: str):
 
 def log_cleanup(session: str):
     """展示清理确认"""
-    pass
+    pass  # 清理静默，不打印
 
+
+_model_logged = False
 
 def log_model_info(config, profile=""):
-    """打印模型信息"""
-    pass
+    """打印模型信息（同进程只输出一次）"""
+    global _model_logged
+    if not _model_logged:
+        model = config.get("model", "")
+        print(f"[{model}]", file=sys.stderr, flush=True)
+        _model_logged = True
 
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
