@@ -48,10 +48,6 @@ from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
-# 强制 UTF-8，解决 Windows 终端中文乱码
-if sys.platform == 'win32':
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # ── 常量 ──────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
@@ -116,28 +112,24 @@ def safe_print(text: str, to_stderr: bool = False):
             print(text.encode('ascii', errors='replace').decode('ascii'), file=dest)
 
 
-def log_conversation(round_num: int, question: str, answer: str, session_name: str = ""):
-    """将对话写入文件，终端只显示一行摘要"""
-    log(f"Round {round_num} 完成")
-    if session_name:
-        conv_dir = SESSION_DIR / session_name
-        conv_dir.mkdir(parents=True, exist_ok=True)
-        log_path = conv_dir / "conversation.md"
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"## Round {round_num}\n\n**Q:** {question}\n\n**A:** {answer}\n\n---\n")
+def log_conversation(round_num: int, question: str, answer: str):
+    """展示主AI↔识图AI之间的对话"""
+    print(f"\n━━━ 第{round_num}轮 ━━━", file=sys.stderr, flush=True)
+    print(f"主AI: {question}", file=sys.stderr, flush=True)
+    print(f"识图AI: {answer}", file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
     """展示清理确认"""
-    print(f"  [cleared] {session}", file=sys.stderr, flush=True)
+    print(f"\n清理: {session} ✓", file=sys.stderr, flush=True)
 
 
 def log_model_info(config, profile=""):
     """打印当前使用的模型信息"""
     model = config.get("model", "unknown")
-    p = config.get("provider", "unknown")
-    label = f" [profile:{profile}]" if profile else ""
-    log(f"识图模型: {model} ({p}{label})")
+    provider = config.get("provider", "unknown")
+    profile_label = f"[profile:{profile}]" if profile else "[默认配置]"
+    log(f"模型: {model} ({provider}) {profile_label}")
 
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
@@ -1044,6 +1036,11 @@ def main():
     if "error" not in config:
         ttl = config.get("session_ttl_hours", 24)
         removed = cleanup_expired_sessions(ttl)
+        active_count = len(list_sessions())
+        if removed:
+            log(f"已清理 {removed} 个过期会话，当前活跃 {active_count}")
+        elif active_count > 0:
+            log(f"当前活跃会话 {active_count}（完成识别请用 --clear 清理）")
 
     # ── enabled 检查（管理命令除外） ──────────────────
     is_management_cmd = args.check or args.stats or args.list_sessions or args.export or args.clear or args.status
@@ -1171,6 +1168,7 @@ def main():
     # ── 自动会话名 ────────────────────────────────
     if args.session == "auto":
         args.session = auto_session_name()
+        log(f"自动会话名: {args.session}")
 
     # ── 追问模式（有 --ask + --session，但无 file_path）──
     if args.ask and args.session and not args.file_path:
@@ -1256,7 +1254,7 @@ def main():
         result = finalize_answer(result, args.protocol)
 
         round_num = sum(1 for m in history if m.get("role") == "user")
-        log_conversation(round_num, question, result, args.session)
+        log_conversation(round_num, question, result)
 
         # 更新会话（保存前去掉图片数据块）
         history.append({"role": "assistant", "content": result})
@@ -1437,7 +1435,7 @@ def main():
             result = finalize_answer(result, args.protocol)
 
             round_num = sum(1 for m in messages if m.get("role") == "user")
-            log_conversation(round_num, question, result, args.session)
+            log_conversation(round_num, question, result)
 
             # 保存会话
             if args.session:
@@ -1450,6 +1448,7 @@ def main():
                              file_name=Path(file_path).name,
                              messages=history,
                              config=config)
+                log(f"会话已保存: {args.session}")
 
             if args.output == "json":
                 json_output(result, session=args.session, model=config.get("model", ""),
