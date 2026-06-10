@@ -103,8 +103,8 @@ def log(msg):
 def log_conversation(round_num: int, question: str, answer: str):
     """展示主AI↔识图AI之间的对话"""
     print(f"\n━━━ 第{round_num}轮 ━━━", file=sys.stderr, flush=True)
-    print(f"主AI: {question[:200]}{'...' if len(question) > 200 else ''}", file=sys.stderr, flush=True)
-    print(f"识图AI: {answer[:300]}{'...' if len(answer) > 300 else ''}", file=sys.stderr, flush=True)
+    print(f"主AI: {question}", file=sys.stderr, flush=True)
+    print(f"识图AI: {answer}", file=sys.stderr, flush=True)
 
 
 def log_cleanup(session: str):
