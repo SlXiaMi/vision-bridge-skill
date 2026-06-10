@@ -97,7 +97,19 @@ PDF_EXTENSIONS = {".pdf"}
 
 
 def log(msg):
-    print(f"  {msg}", file=sys.stderr, flush=True)
+    safe_print(f"  {msg}", to_stderr=True)
+
+
+def safe_print(text: str, to_stderr: bool = False):
+    """打印，自动处理 Windows GBK 编码"""
+    dest = sys.stderr if to_stderr else sys.stdout
+    try:
+        print(text, file=dest)
+    except UnicodeEncodeError:
+        try:
+            print(text.encode('utf-8', errors='replace').decode('utf-8', errors='replace'), file=dest)
+        except:
+            print(text.encode('ascii', errors='replace').decode('ascii'), file=dest)
 
 
 def log_conversation(round_num: int, question: str, answer: str):
@@ -118,14 +130,6 @@ def log_model_info(config, profile=""):
     provider = config.get("provider", "unknown")
     profile_label = f"[profile:{profile}]" if profile else "[默认配置]"
     log(f"模型: {model} ({provider}) {profile_label}")
-
-
-def safe_print(text: str):
-    """打印到 stdout，自动处理编码问题"""
-    try:
-        print(text)
-    except UnicodeEncodeError:
-        print(text.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8', errors='replace'))
 
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
