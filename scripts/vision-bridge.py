@@ -48,6 +48,10 @@ from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
+# 强制 UTF-8，解决 Windows 终端中文乱码
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # ── 常量 ──────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent
