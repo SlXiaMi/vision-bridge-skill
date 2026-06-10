@@ -119,7 +119,7 @@ def safe_print(text: str, to_stderr: bool = False):
 def log_conversation(round_num: int, question: str, answer: str):
     """展示回答内容，首行带模型+轮次"""
     global _model_name
-    header = f"[{_model_name} · R{round_num}] " if _model_name else f"[R{round_num}] "
+    header = f"[{_model_name} R{round_num}] " if _model_name else f"[R{round_num}] "
     _model_name = ""
     lines = answer.split('\n')
     if lines:
