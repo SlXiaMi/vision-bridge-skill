@@ -116,14 +116,16 @@ def safe_print(text: str, to_stderr: bool = False):
             print(text.encode('ascii', errors='replace').decode('ascii'), file=dest)
 
 
-def log_conversation(round_num: int, question: str, answer: str):
-    """展示主AI↔识图AI之间的对话"""
-    sep = "─" * 56
-    print(f"\n{sep}", file=sys.stderr, flush=True)
-    print(f"  Round {round_num}", file=sys.stderr, flush=True)
-    print(f"\n  Q: {question}", file=sys.stderr, flush=True)
-    print(f"\n  A: {answer}", file=sys.stderr, flush=True)
-    print(sep, file=sys.stderr, flush=True)
+def log_conversation(round_num: int, question: str, answer: str, session_name: str = ""):
+    """将对话写入文件，终端只显示一行摘要"""
+    log(f"Round {round_num} 完成")
+    if session_name:
+        conv_dir = SESSION_DIR / session_name
+        if conv_dir.exists():
+            log_path = conv_dir / "conversation.md"
+            with open(log_path, "w", encoding="utf-8") as f:
+                f.write(f"# Round {round_num}\n\n## Q\n{question}\n\n## A\n{answer}\n")
+            log(f"对话记录: {log_path}")
 
 
 def log_cleanup(session: str):
@@ -1255,7 +1257,7 @@ def main():
         result = finalize_answer(result, args.protocol)
 
         round_num = sum(1 for m in history if m.get("role") == "user")
-        log_conversation(round_num, question, result)
+        log_conversation(round_num, question, result, args.session)
 
         # 更新会话（保存前去掉图片数据块）
         history.append({"role": "assistant", "content": result})
@@ -1436,7 +1438,7 @@ def main():
             result = finalize_answer(result, args.protocol)
 
             round_num = sum(1 for m in messages if m.get("role") == "user")
-            log_conversation(round_num, question, result)
+            log_conversation(round_num, question, result, args.session)
 
             # 保存会话
             if args.session:
