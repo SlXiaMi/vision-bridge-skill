@@ -1043,9 +1043,6 @@ def main():
         active_count = len(list_sessions())
         if removed:
             log(f"已清理 {removed} 个过期会话，当前活跃 {active_count}")
-        elif active_count > 0:
-            log(f"当前活跃会话 {active_count}（完成识别请用 --clear 清理）")
-
     # ── enabled 检查（管理命令除外） ──────────────────
     is_management_cmd = args.check or args.stats or args.list_sessions or args.export or args.clear or args.status
     if "error" not in config and not config.get("enabled", True) and not is_management_cmd:
@@ -1172,7 +1169,6 @@ def main():
     # ── 自动会话名 ────────────────────────────────
     if args.session == "auto":
         args.session = auto_session_name()
-        log(f"自动会话名: {args.session}")
 
     # ── 追问模式（有 --ask + --session，但无 file_path）──
     if args.ask and args.session and not args.file_path:
@@ -1452,7 +1448,6 @@ def main():
                              file_name=Path(file_path).name,
                              messages=history,
                              config=config)
-                log(f"会话已保存: {args.session}")
 
             if args.output == "json":
                 json_output(result, session=args.session, model=config.get("model", ""),
