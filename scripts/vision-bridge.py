@@ -130,7 +130,10 @@ def log_cleanup(session: str):
 
 def log_model_info(config, profile=""):
     """打印当前使用的模型信息"""
-    pass  # 静默，保持终端简洁
+    model = config.get("model", "unknown")
+    p = config.get("provider", "unknown")
+    label = f" [profile:{profile}]" if profile else ""
+    log(f"{model} ({p}{label})")
 
 
 def json_output(answer: str, session: str = "", model: str = "", provider: str = "",
