@@ -230,7 +230,7 @@ vision-bridge.py --version                    # 版本号
 | `--session auto\|<名>` | 会话管理 |
 | `--add-image <文件>` | 追加图片到会话 |
 | `--profile <名>` | 切换配置 |
-| `--enhance` | PDF 图片对比度增强（Pillow 可选） |
+| `--enhance` | 图片对比度增强：模糊/低对比度图片均可使用（Pillow 可选） |
 | `--parallel` | 多图并行 API 调用，结果顺序输出（不支持 `--session`） |
 | `--pdf-page N` | 指定 PDF 页码 |
 | `--pdf-range M-N` | PDF 页码范围（并行渲染，4 线程） |

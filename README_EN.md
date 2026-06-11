@@ -225,7 +225,7 @@ vision-bridge.py --version                    # Version number
 | `--session auto\|<name>` | Session management |
 | `--add-image <file>` | Add image to existing session |
 | `--profile <name>` | Switch config profile |
-| `--enhance` | PDF image contrast enhancement (Pillow optional) |
+| `--enhance` | Image contrast enhancement: blurry/low-contrast images of any type (Pillow optional) |
 | `--parallel` | Multi-image parallel API calls, results in order (no `--session`) |
 | `--pdf-page N` | Specific PDF page |
 | `--pdf-range M-N` | PDF page range (parallel, 4 threads) |
