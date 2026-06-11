@@ -336,7 +336,8 @@ def compress_image(file_path: str, max_mb: float = 15) -> tuple[bytes, str]:
     return compressed, "jpeg"
 
 
-def encode_image_base64(file_path: str, config: dict) -> tuple[str, str]:
+def encode_image_base64(file_path: str, config: dict, enhance: bool = False) -> tuple[str, str]:
+    """读取图片文件并编码为 base64。enhance=True 时自动增强对比度。"""
     compress_threshold = config.get("compress_max_mb", 15)
     try:
         image_bytes, fmt = compress_image(file_path, max_mb=compress_threshold)
@@ -345,6 +346,8 @@ def encode_image_base64(file_path: str, config: dict) -> tuple[str, str]:
         with open(file_path, "rb") as f:
             image_bytes = f.read()
             fmt = Path(file_path).suffix.lower().lstrip(".")
+    if enhance:
+        image_bytes = enhance_image(image_bytes)
     mime_map = {
         "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
         "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
@@ -1244,13 +1247,16 @@ def main():
                 sys.exit(1)
             if args.no_compress:
                 with open(add_path, "rb") as f:
-                    raw = base64.standard_b64encode(f.read()).decode("utf-8")
+                    img_bytes = f.read()
+                if args.enhance:
+                    img_bytes = enhance_image(img_bytes)
+                raw = base64.standard_b64encode(img_bytes).decode("utf-8")
                 mime, _ = mimetypes.guess_type(add_path)
                 if not mime:
                     mime = "image/png"
                 images.append({"b64": raw, "media_type": mime, "file_name": Path(add_path).name})
             else:
-                img_b64, img_mime = encode_image_base64(add_path, config)
+                img_b64, img_mime = encode_image_base64(add_path, config, enhance=args.enhance)
                 images.append({"b64": img_b64, "media_type": img_mime,
                                "file_name": Path(add_path).name})
             log(f"追加图片: {Path(add_path).name} (共 {len(images)} 张)")
@@ -1393,13 +1399,16 @@ def main():
             if is_image_file(file_local):
                 if args.no_compress:
                     with open(file_local, "rb") as f:
-                        raw = base64.standard_b64encode(f.read()).decode("utf-8")
+                        img_bytes = f.read()
+                    if args.enhance:
+                        img_bytes = enhance_image(img_bytes)
+                    raw = base64.standard_b64encode(img_bytes).decode("utf-8")
                     mime, _ = mimetypes.guess_type(file_local)
                     if not mime:
                         mime = "image/png"
                     all_images.append((raw, mime, Path(file_local).name, file_local, file_idx))
                 else:
-                    image_b64, media_type = encode_image_base64(file_local, config)
+                    image_b64, media_type = encode_image_base64(file_local, config, enhance=args.enhance)
                     all_images.append((image_b64, media_type, Path(file_local).name, file_local, file_idx))
             else:
                 print(f"错误: 不支持的文件格式 — {Path(file_local).name}", file=sys.stderr)
