@@ -2,7 +2,7 @@
 name: vision-bridge-skill
 description: >-
   看图。你本身不识别图片，但可以用这个 skill 间接"看见"。用户上传图片、PDF、截图、图表、扫描件时主动调用。
-  支持 AI-to-AI 协议通信、置信度标记、格式纠偏重试、双图对比、PDF查阅、批量处理、流式输出。
+  先并行扫定位，再开会话深挖。支持多图并行处理、多轮追问、AI-to-AI 协议通信（#q @ &gt; 语法 + 置信度标记 + 格式纠偏）、双图对比、PDF 查阅（单页/范围/增强）、批量通配符、多 Profile 切换、流式输出。
 license: MIT
 metadata:
   author: Claude Code
