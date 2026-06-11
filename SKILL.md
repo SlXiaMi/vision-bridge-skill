@@ -116,29 +116,33 @@ metadata:
 
 **选择规则：**
 
-| 任务类型 | 选择依据 | 命令 |
-|----------|---------|------|
-| 日常截图、简单识别 | 默认配置即可 | `vision-bridge.py <文件> --ask "..."` |
-| 复杂图表、专业文档 | 需要更强模型 | `vision-bridge.py --profile <强模型> <文件> --ask "..."` |
-| 多图对比、批量处理 | 用默认配置 | 同上，加 `--add-image` 或通配符 |
+## 模型选择
+
+**每次新对话首次看图时，询问用户选择模型。**
 
 **操作流程：**
 1. 收到视觉任务时，先运行 `vision-bridge.py --list-profiles` 查看可用配置
-2. 根据任务复杂度选择合适的 profile
-3. 调用时带上 `--profile <名称>`（不带则用默认配置）
-4. **在回复用户时，说明当前使用的是哪个模型**（脚本日志中会显示）
+2. **把 profile 列表展示给用户，让用户自己选**
+3. 用户选了之后，全程用该 profile，不再重复询问
+4. 如果用户说"换模型"，重新 `--list-profiles` 并让用户选
+
+**思考时注明模型：** 每次调用 vision-bridge 后，脚本日志会显示 `[模型名] 共N轮`，主 AI 回复用户时据此说明用的是哪个模型。
+
+**切换模型：** 用户随时可以说"换模型"或"用 XX 模型"，下次调用带上 `--profile <名称>`。
 
 **示例：**
 ```
-# 先看有哪些模型可用
-vision-bridge.py --list-profiles
-# 输出:
-#   --profile mimo          mimo-v2.5           anthropic   https://api.xiaomimimo.com/anthropic
-#   --profile gpt4v         gpt-4o              openai      https://api.openai.com
-
-# 用 mimo 模型识别
-vision-bridge.py --profile mimo photo.jpg --ask "描述内容" --session auto
-# 日志显示: 模型: mimo-v2.5 (anthropic) [profile:mimo]
+用户: 看看这张图
+AI: 先看看有哪些模型可用...
+    vision-bridge.py --list-profiles
+AI: 当前可用：
+    · mimo-API — mimo-v2.5 (API 端点)
+    · mimo-Plan — mimo-v2.5 (Plan 端点)
+    你想用哪个？
+用户: 用 Plan
+AI: vision-bridge.py --profile mimo-Plan 图片 --ask "..."
+    → [mimo-v2.5] 共1轮
+AI: (使用 MiMo v2.5 Plan 端点) 图中是...
 ```
 
 ## 命令速查
